@@ -1,0 +1,15 @@
+# .pre-commit-config.yaml
+repos:
+#  - repo: https://github.com/douglasduteil/rustfmt
+#    rev: v1.4.37  # Version to use
+#    hooks:
+#      - id: rustfmt
+#        name: rustfmt (Rust code formatting)
+#        description: Automatically format Rust code with rustfmt
+
+  - repo: https://github.com/rust-lang/rust-clippy
+    rev: v0.1.51  # Version to use
+    hooks:
+      - id: clippy
+        name: Clippy (Rust linter)
+        description: Run Clippy linter on Rust code
