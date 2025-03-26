@@ -7,5 +7,6 @@ edition = "2021"
 polars = { version = "0.46.0", features = ["csv", "lazy"] }
 polars-core = "0.46.0"
 polars-lazy = "0.46.0"
+thiserror = "2.0.12"
 #polars = { version = "0.46.0", features = ["csv", "lazy"] }
 

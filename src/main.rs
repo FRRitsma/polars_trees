@@ -8,8 +8,13 @@ use std::error::Error;
 use polars::prelude::*;
 
 mod constants;
+mod extract_values;
 mod generic_functions;
+mod numeric_type_columns;
+mod preprocessing;
+mod splitting_columns;
 mod string_type_columns;
+mod test_utils;
 
 fn create_split_in_dataframe(
     df: &LazyFrame,
@@ -93,41 +98,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("{:?}", result);
 
     Ok(())
-}
-
-fn extract_combined_information_value(
-    category: &String,
-    binarized_feature_column: &String,
-    df: &LazyFrame,
-) -> Result<f32, Box<dyn Error>> {
-    let collected_category = df
-        .clone()
-        .filter(col(binarized_feature_column).eq(lit(category.clone())))
-        .select([col("count")])
-        .collect()?;
-
-    let category_label_0: f32 = collected_category
-        .get(0)
-        .unwrap()
-        .first()
-        .unwrap()
-        .try_extract::<f32>()?;
-
-    let category_label_1: f32 = collected_category
-        .get(1)
-        .unwrap()
-        .first()
-        .unwrap()
-        .try_extract::<f32>()?;
-
-    let information_value = compute_information_single_category(category_label_0, category_label_1);
-
-    Ok(information_value)
-}
-
-fn compute_information_single_category(first_value: f32, second_value: f32) -> f32 {
-    let total_value = first_value + second_value;
-    let first_proportion = first_value / total_value;
-    let second_proportion = second_value / total_value;
-    (first_proportion - second_proportion) * (first_value / second_value).ln()
 }
