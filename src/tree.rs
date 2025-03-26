@@ -2,9 +2,9 @@ use polars::prelude::Expr;
 
 
 struct Tree{
-    left_node: Option<Tree>,
-    right_node: Option<Tree>,
-    split_expression: Option<Tree>,
+    left_node: Option<Box<Tree>>,
+    right_node: Option<Box<Tree>>,
+    split_expression: Option<Expr>,
     is_final: bool,
     depth: u8,
     minimal_sample_size: u16,
