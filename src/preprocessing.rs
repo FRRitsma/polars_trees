@@ -16,7 +16,7 @@ pub fn add_target_column(df: LazyFrame, target_column: &str) -> LazyFrame {
 #[cfg(test)]
 mod tests {
     use crate::preprocessing::add_target_column;
-    use crate::test_utils::{get_raw_dataframe, get_test_dataframe};
+    use crate::test_utils::get_raw_dataframe;
 
     #[test]
     fn test_add_target_column() {

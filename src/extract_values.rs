@@ -1,13 +1,15 @@
-
+use crate::constants::{BINARIZED_COLUMN, COUNT_COLUMN, TARGET_COLUMN};
+use polars::prelude::{col, lit, PolarsError, PolarsResult};
 use polars_core::frame::DataFrame;
-use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN, TARGET_COLUMN};
-use polars::prelude::{col, lit};
+use polars_core::prelude::SortOptions;
+use polars_lazy::frame::LazyFrame;
 use polars_lazy::prelude::IntoLazy;
 
 pub fn extract_count(df: &DataFrame, label: bool, category: &str) -> f32 {
     // TODO: Conversion to lazy dataframe shouldn't be necessary
     let default = 0.0;
-    let output = df.clone()
+    let output = df
+        .clone()
         .lazy()
         .filter(
             col(BINARIZED_COLUMN)
@@ -24,14 +26,22 @@ pub fn extract_count(df: &DataFrame, label: bool, category: &str) -> f32 {
     output
 }
 
+pub fn get_most_common_label(df: &LazyFrame) -> Result<bool, PolarsError> {
+    let collected = df.clone().select([col(TARGET_COLUMN).mode()]).collect()?;
+
+    let mode = collected.column(TARGET_COLUMN)?.bool()?.get(0).unwrap(); // or proper error handling
+    Ok(mode)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::constants::{CATEGORY_A, CATEGORY_B};
+    use crate::extract_values::extract_count;
     use polars_core::df;
     use polars_core::frame::DataFrame;
-    use super::*;
-    use crate::extract_values::extract_count;
 
-    fn test_complete_df() -> DataFrame{
+    fn test_complete_df() -> DataFrame {
         df!(
             BINARIZED_COLUMN => &[CATEGORY_A, CATEGORY_B, CATEGORY_A, CATEGORY_B],
             TARGET_COLUMN => &[true, true, false, false],
@@ -40,13 +50,28 @@ mod tests {
         .unwrap()
     }
 
-    fn test_empty_df() -> DataFrame{
+    fn test_empty_df() -> DataFrame {
         df!(
             BINARIZED_COLUMN => &[CATEGORY_A],
             TARGET_COLUMN => &[true],
             COUNT_COLUMN => &[10]
         )
         .unwrap()
+    }
+
+    fn test_mostly_false_df() -> DataFrame {
+        df!(
+            TARGET_COLUMN => &[true, false, false],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    pub fn test_get_most_common_label_return_false() -> PolarsResult<()> {
+        let df = test_mostly_false_df();
+        let mode = get_most_common_label(&df.lazy())?;
+        assert_eq!(mode, false);
+        Ok(())
     }
 
     #[test]

@@ -1,4 +1,3 @@
-use crate::constants::BINARIZED_COLUMN;
 use polars::prelude::col;
 use polars::prelude::Expr;
 use polars_core::prelude::SortMultipleOptions;
@@ -45,9 +44,10 @@ fn get_most_common_string_in_column<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::BINARIZED_COLUMN;
+    use crate::generic_functions;
     use crate::generic_functions::add_binary_column_to_dataframe;
     use crate::test_utils::get_test_dataframe;
-    use crate::generic_functions;
 
     const FEATURE_COLUMN: &str = "Sex";
     const TARGET_COLUMN: &str = "Survived";
