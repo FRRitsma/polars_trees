@@ -4,10 +4,10 @@ use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN, T
 use polars::prelude::{col, lit};
 use polars_lazy::prelude::IntoLazy;
 
-pub fn extract_count(df: DataFrame, label: bool, category: &str) -> f32 {
+pub fn extract_count(df: &DataFrame, label: bool, category: &str) -> f32 {
     // TODO: Conversion to lazy dataframe shouldn't be necessary
     let default = 0.0;
-    let output = df
+    let output = df.clone()
         .lazy()
         .filter(
             col(BINARIZED_COLUMN)
@@ -54,7 +54,7 @@ mod tests {
         let df = test_complete_df();
         let label = true;
         let category = CATEGORY_A;
-        let output = extract_count(df, label, category);
+        let output = extract_count(&df, label, category);
         assert_eq!(output, 10.0);
     }
 
@@ -63,7 +63,7 @@ mod tests {
         let df = test_complete_df();
         let label = false;
         let category = CATEGORY_A;
-        let output = extract_count(df, label, category);
+        let output = extract_count(&df, label, category);
         assert_eq!(output, 30.0);
     }
 
@@ -72,7 +72,7 @@ mod tests {
         let df = test_complete_df();
         let label = true;
         let category = CATEGORY_B;
-        let output = extract_count(df, label, category);
+        let output = extract_count(&df, label, category);
         assert_eq!(output, 20.0);
     }
 
@@ -81,7 +81,7 @@ mod tests {
         let df = test_complete_df();
         let label = false;
         let category = CATEGORY_B;
-        let output = extract_count(df, label, category);
+        let output = extract_count(&df, label, category);
         assert_eq!(output, 40.0);
     }
 
@@ -90,7 +90,7 @@ mod tests {
         let df = test_empty_df();
         let label = false;
         let category = CATEGORY_B;
-        let output = extract_count(df, label, category);
+        let output = extract_count(&df, label, category);
         assert_eq!(output, 0.0);
     }
 
@@ -99,7 +99,7 @@ mod tests {
         let df = test_empty_df();
         let label = true;
         let category = CATEGORY_A;
-        let output = extract_count(df, label, category);
+        let output = extract_count(&df, label, category);
         assert_eq!(output, 10.0);
     }
 }

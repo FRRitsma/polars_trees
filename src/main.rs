@@ -15,6 +15,7 @@ mod preprocessing;
 mod splitting_columns;
 mod string_type_columns;
 mod test_utils;
+mod tree;
 
 fn create_split_in_dataframe(
     df: &LazyFrame,

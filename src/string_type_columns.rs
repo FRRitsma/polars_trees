@@ -47,7 +47,7 @@ mod tests {
     use super::*;
     use crate::generic_functions::add_binary_column_to_dataframe;
     use crate::test_utils::get_test_dataframe;
-    use crate::{generic_functions, test_utils};
+    use crate::generic_functions;
 
     const FEATURE_COLUMN: &str = "Sex";
     const TARGET_COLUMN: &str = "Survived";
@@ -78,7 +78,7 @@ mod tests {
 
         let split_expression = get_mode_split_expression(&df, FEATURE_COLUMN)?;
         let total_information_value =
-            generic_functions::get_total_information_value(&df, &split_expression, TARGET_COLUMN)?;
+            generic_functions::get_total_information_value(&df, &split_expression)?;
 
         println!("{:?}", total_information_value);
         assert!(total_information_value > 1.0);

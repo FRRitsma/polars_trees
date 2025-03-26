@@ -28,7 +28,7 @@ pub fn get_median_split_expression(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::BINARIZED_COLUMN;
+    use crate::constants::{BINARIZED_COLUMN, TARGET_COLUMN};
     use crate::generic_functions::{add_binary_column_to_dataframe, get_total_information_value};
     use crate::test_utils::get_test_dataframe;
     use polars::prelude::col;
@@ -58,7 +58,7 @@ mod tests {
 
         let split_expression = get_median_split_expression(&df, "Age")?;
         let total_information_value =
-            get_total_information_value(&df, &split_expression, "Survived")?;
+            get_total_information_value(&df, &split_expression)?;
 
         println!("{:?}", total_information_value);
         assert!(total_information_value < 1.0);

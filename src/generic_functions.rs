@@ -1,6 +1,6 @@
 // Target is to create functions for string columns, functions for numeric type columns and this file to streamline common functionalities between both
 
-use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN};
+use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN, TARGET_COLUMN};
 use crate::splitting_columns;
 use polars::prelude::{col, lit, when, Expr, PolarsError};
 use polars_core::frame::DataFrame;
@@ -10,6 +10,7 @@ use polars_core::utils::Container;
 use polars_lazy::frame::LazyFrame;
 use std::error::Error;
 use thiserror::Error;
+use crate::extract_values::extract_count;
 
 #[derive(Debug, Error)]
 pub enum InformationValueError {
@@ -29,12 +30,12 @@ pub fn add_binary_column_to_dataframe(df: &LazyFrame, split_expression: &Expr) -
     )
 }
 
-pub fn aggregate_binary_column(df: &LazyFrame, target_column: &str) -> LazyFrame {
+pub fn aggregate_binary_column(df: &LazyFrame) -> LazyFrame {
     df.clone()
-        .select([col(target_column), col(BINARIZED_COLUMN)])
-        .group_by([col(target_column), col(BINARIZED_COLUMN)])
-        .agg([col(target_column).count().alias(COUNT_COLUMN)])
-        .sort([BINARIZED_COLUMN, target_column], Default::default())
+        .select([col(TARGET_COLUMN), col(BINARIZED_COLUMN)])
+        .group_by([col(TARGET_COLUMN), col(BINARIZED_COLUMN)])
+        .agg([col(TARGET_COLUMN).count().alias(COUNT_COLUMN)])
+        .sort([BINARIZED_COLUMN, TARGET_COLUMN], Default::default())
 }
 
 pub fn extract_aggregated_count(series: &DataFrame, index: usize) -> f32 {
@@ -77,22 +78,14 @@ pub fn extract_aggregated_count(series: &DataFrame, index: usize) -> f32 {
 pub fn get_total_information_value(
     df: &LazyFrame,
     split_expression: &Expr,
-    target_column: &str,
 ) -> Result<f32, InformationValueError> {
     let binary_df = add_binary_column_to_dataframe(&df, &split_expression);
-    let aggregate_df = aggregate_binary_column(&binary_df, target_column).collect()?;
+    let aggregate_df = aggregate_binary_column(&binary_df).collect()?;
 
-    // if aggregate_df.len() != 4 {
-    //     return Err(InformationValueError::SplitError());
-    // }
-
-    let category_a_label_0 = extract_aggregated_count(&aggregate_df, 0);
-    let category_a_label_1 = extract_aggregated_count(&aggregate_df, 1);
-    let category_b_label_0 = extract_aggregated_count(&aggregate_df, 2);
-    let category_b_label_1 = extract_aggregated_count(&aggregate_df, 3);
-
-
-
+    let category_a_label_0 = extract_count(&aggregate_df,  false, CATEGORY_A,);
+    let category_a_label_1 = extract_count(&aggregate_df,  true, CATEGORY_A,);
+    let category_b_label_0 = extract_count(&aggregate_df,  false, CATEGORY_B,);
+    let category_b_label_1 = extract_count(&aggregate_df,  true, CATEGORY_B,);
 
     let information_value_a =
         compute_information_single_category(category_a_label_0, category_a_label_1);
@@ -103,7 +96,6 @@ pub fn get_total_information_value(
     Ok(total_information_value)
 }
 
-pub fn get_split_expression_column() {}
 
 fn compute_information_single_category(first_value: f32, second_value: f32) -> f32 {
     let first_value = first_value + 1.0;
@@ -162,10 +154,9 @@ pub fn get_leaf_value_for_column(
     df: &LazyFrame,
     schema: &SchemaRef,
     feature_column: &str,
-    target_column: &str,
 ) -> Result<LeafValue, Box<dyn Error>> {
     let split_expression = splitting_columns::get_split_expression(df, schema, feature_column)?;
-    let information_value = get_total_information_value(&df, &split_expression, target_column)?;
+    let information_value = get_total_information_value(&df, &split_expression)?;
     Ok(LeafValue {
         split_expression,
         information_value,
@@ -184,10 +175,10 @@ pub fn get_optimal_leaf_value_of_dataframe(
             continue;
         }
 
-        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column, target_column)?;
+        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column)?;
 
         match &optimal_leaf_value {
-            Some(optimal) if leaf_value.information_value < optimal.information_value => {
+            Some(optimal) if leaf_value.information_value > optimal.information_value => {
                 optimal_leaf_value = Some(leaf_value);
             }
             None => {
@@ -203,7 +194,6 @@ pub fn get_optimal_leaf_value_of_dataframe(
 mod tests {
     use super::*;
     use crate::test_utils::get_test_dataframe;
-    const TARGET_COLUMN: &str = "Survived";
     #[test]
     fn test_get_type_of_column() -> Result<(), Box<dyn Error>> {
         let df = get_test_dataframe();
@@ -220,7 +210,7 @@ mod tests {
     fn test_get_leaf_value_of_age() -> Result<(), Box<dyn Error>> {
         let df = get_test_dataframe();
         let schema = df.logical_plan.compute_schema()?;
-        let leaf_value = get_leaf_value_for_column(&df, &schema, "Age", TARGET_COLUMN)?;
+        let leaf_value = get_leaf_value_for_column(&df, &schema, "Age")?;
         assert!(leaf_value.information_value < 1.0);
         Ok(())
     }
@@ -228,7 +218,7 @@ mod tests {
     fn test_get_leaf_value_of_sex() -> Result<(), Box<dyn Error>> {
         let df = get_test_dataframe();
         let schema = df.logical_plan.compute_schema()?;
-        let leaf_value = get_leaf_value_for_column(&df, &schema, "Sex", TARGET_COLUMN)?;
+        let leaf_value = get_leaf_value_for_column(&df, &schema, "Sex")?;
         assert!(leaf_value.information_value > 1.0);
         Ok(())
     }
@@ -238,30 +228,10 @@ mod tests {
         let df = get_test_dataframe();
         let schema = df.logical_plan.compute_schema()?;
 
-        // let optimal_leaf_value = get_optimal_leaf_value_of_dataframe(&df, TARGET_COLUMN)?;
-        // println!("{:?}", optimal_leaf_value.information_value);
+        let optimal_leaf_value = get_optimal_leaf_value_of_dataframe(&df, TARGET_COLUMN)?;
+        println!("{:?}", optimal_leaf_value.information_value);
+        println!("{:?}", optimal_leaf_value.split_expression);
 
-        for feature_column in schema.iter_names() {
-            if feature_column == TARGET_COLUMN {
-                continue;
-            }
-            // if feature_column == "Name" {
-            //     continue;
-            // }
-            if feature_column == "SibSp" {
-                continue;
-            }
-            if feature_column == "Parch" {
-                continue;
-            }
-            if feature_column == "Ticket" {
-                continue;
-            }
-            println!("{}", feature_column);
-            let leaf_value =
-                get_leaf_value_for_column(&df, &schema, feature_column, TARGET_COLUMN)?;
-            println!("{:?}", leaf_value.information_value);
-        }
         Ok(())
     }
 }
