@@ -6,14 +6,6 @@ use polars_lazy::frame::LazyFrame;
 use polars_lazy::prelude::*;
 use std::error::Error;
 
-pub fn get_mode_split_expression(
-    df: &LazyFrame,
-    feature_column: &str,
-) -> Result<Expr, Box<dyn Error>> {
-    let most_common_string = get_most_common_string_in_column(df, feature_column)?;
-    Ok(col(feature_column).eq(lit(most_common_string)))
-}
-
 fn get_n_unique_values(lf: LazyFrame, column: &str) -> Result<u32, Box<dyn Error>> {
     let result_column = "unique_values";
     let distinct_values = lf
@@ -24,33 +16,6 @@ fn get_n_unique_values(lf: LazyFrame, column: &str) -> Result<u32, Box<dyn Error
         .get(0)
         .unwrap();
     Ok(distinct_values)
-}
-
-fn get_most_common_string_in_column<'a>(
-    df: &'a LazyFrame,
-    feature_column: &'a str,
-) -> Result<String, Box<dyn Error>> {
-    // try_extract doesn't work for string, convert PolarsResult<AnyValue> doesn't support utf8,
-    // so the extraction is quite ugly
-    let collected_df = df
-        .clone()
-        .group_by([col(feature_column)])
-        .agg([col(feature_column).count().alias("count")])
-        .sort(
-            ["count"],
-            SortMultipleOptions::default().with_order_descending(true), // Sort descending
-        )
-        .select([col(feature_column)])
-        .limit(1)
-        .collect()?;
-
-    let mode_value = collected_df
-        .column(feature_column)?
-        .get(0)?
-        .to_string()
-        .trim_matches('"')
-        .to_string();
-    Ok(mode_value)
 }
 
 fn get_most_common_values_as_df(
@@ -85,7 +50,7 @@ fn get_most_common_values_as_df(
     Ok(top_df)
 }
 
-fn extract_equality_expressions(
+fn extract_equality_expressions_from_column(
     column_name: &str,
     top_column: &Column,
 ) -> Result<Vec<Expr>, Box<dyn Error>> {
@@ -109,7 +74,7 @@ fn extract_equality_expressions(
     Ok(expressions)
 }
 
-pub fn get_equality_expression_for_common_categories(
+pub fn get_equality_expression_categories(
     lf: &LazyFrame,
     column_name: &str,
     top_n: IdxSize,
@@ -117,52 +82,14 @@ pub fn get_equality_expression_for_common_categories(
 ) -> Result<Vec<Expr>, Box<dyn Error>> {
     let top_df = get_most_common_values_as_df(&lf, column_name, top_n, minimum_bin_size)?;
     let top_column = top_df.column(column_name)?;
-    let expressions = extract_equality_expressions(column_name, top_column)?;
+    let expressions = extract_equality_expressions_from_column(column_name, top_column)?;
     Ok(expressions)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::BINARIZED_COLUMN;
-    use crate::generic_functions;
-    use crate::generic_functions::add_binary_column_to_dataframe;
     use crate::test_utils::get_preprocessed_test_dataframe;
-
-    const FEATURE_COLUMN: &str = "Sex";
-
-    #[test]
-    fn test_get_split_expression_for_category_sex() -> Result<(), Box<dyn Error>> {
-        let lf = get_preprocessed_test_dataframe();
-        let split_expression = get_mode_split_expression(&lf, FEATURE_COLUMN)?;
-        let expected_split_expression = col(FEATURE_COLUMN).eq(lit("male"));
-        assert_eq!(split_expression, expected_split_expression);
-        Ok(())
-    }
-
-    #[test]
-    fn test_split_feature_column_into_a_and_b_category() -> Result<(), Box<dyn Error>> {
-        let df = get_preprocessed_test_dataframe();
-        let split_expression = get_mode_split_expression(&df, FEATURE_COLUMN)?;
-        let binary_df = add_binary_column_to_dataframe(&df, &split_expression)
-            .select([col(FEATURE_COLUMN), col(BINARIZED_COLUMN)])
-            .collect()?;
-        println!("{:?}", binary_df);
-        Ok(())
-    }
-
-    #[test]
-    fn test_get_total_information_for_sex_column() -> Result<(), Box<dyn Error>> {
-        let df = get_preprocessed_test_dataframe();
-
-        let split_expression = get_mode_split_expression(&df, FEATURE_COLUMN)?;
-        let (total_information_value, _) =
-            generic_functions::get_total_information_value(&df, &split_expression);
-
-        println!("{:?}", total_information_value);
-        assert!(total_information_value > 1.0);
-        Ok(())
-    }
 
     #[test]
     fn test_unique_amount_of_names() -> Result<(), Box<dyn Error>> {
@@ -196,13 +123,8 @@ mod tests {
         let top_n = 3;
         let minimum_bin_size = 200;
 
-        let expressions = get_equality_expression_for_common_categories(
-            &lf,
-            column_name,
-            top_n,
-            minimum_bin_size,
-        )
-        .unwrap();
+        let expressions =
+            get_equality_expression_categories(&lf, column_name, top_n, minimum_bin_size).unwrap();
 
         assert_eq!(expressions.len(), 2);
     }
@@ -213,13 +135,8 @@ mod tests {
         let column_name = "Sex";
         let top_n = 3;
         let minimum_bin_size = 200;
-        let expressions = get_equality_expression_for_common_categories(
-            &lf,
-            column_name,
-            top_n,
-            minimum_bin_size,
-        )
-        .unwrap();
+        let expressions =
+            get_equality_expression_categories(&lf, column_name, top_n, minimum_bin_size).unwrap();
         assert_eq!(expressions.len(), 2);
     }
 
@@ -229,13 +146,8 @@ mod tests {
         let column_name = "Name";
         let top_n = 3;
         let minimum_bin_size = 200;
-        let expressions = get_equality_expression_for_common_categories(
-            &lf,
-            column_name,
-            top_n,
-            minimum_bin_size,
-        )
-        .unwrap();
+        let expressions =
+            get_equality_expression_categories(&lf, column_name, top_n, minimum_bin_size).unwrap();
         assert_eq!(expressions.len(), 0);
         let schema = lf.logical_plan.compute_schema().unwrap();
         let column_names: Vec<&str> = schema.iter().map(|(name, _)| name.as_str()).collect();

@@ -156,13 +156,12 @@ pub fn get_optimal_leaf_value_of_dataframe(
             continue;
         }
 
-        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column, minimum_bin_size).unwrap_or(
-            LeafValue{
+        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column, minimum_bin_size)
+            .unwrap_or(LeafValue {
                 split_expression: col("Empty"),
                 information_value: -99999.0,
                 minimum_bin_size: 99999.0,
-            }
-        );
+            });
 
         match &optimal_leaf_value {
             Some(optimal)
@@ -229,8 +228,7 @@ mod tests {
         assert_eq!(column_names.len(), 12);
 
         // println!("{:?}", column_names);
-        
-        
+
         let optimal_leaf_value = get_optimal_leaf_value_of_dataframe(&df, 32f32)?;
         let expected_split_expression: Expr = col("Sex").eq(lit("male"));
         assert_eq!(

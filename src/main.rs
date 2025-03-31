@@ -7,6 +7,7 @@ use std::error::Error;
 
 use polars::prelude::*;
 
+mod categorical_columns;
 mod constants;
 mod debug;
 mod extract_values;
@@ -14,7 +15,6 @@ mod generic_functions;
 mod numeric_type_columns;
 mod preprocessing;
 mod splitting_columns;
-mod string_type_columns;
 mod test_utils;
 mod tree;
 
