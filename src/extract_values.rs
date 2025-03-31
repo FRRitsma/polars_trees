@@ -6,6 +6,7 @@ use polars_lazy::prelude::IntoLazy;
 
 pub fn extract_count(df: &DataFrame, label: bool, category: &str) -> f32 {
     // TODO: Conversion to lazy dataframe shouldn't be necessary
+    // TODO: Why the conversion to f32?
     let default = 0.0;
     let output = df
         .clone()

@@ -3,13 +3,12 @@
 use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN, TARGET_COLUMN};
 use crate::extract_values::extract_count;
 use crate::splitting_columns;
-use polars::prelude::{col, Expr, lit, when};
+use polars::prelude::{col, lit, when, Expr};
 use polars_core::frame::DataFrame;
 use polars_core::prelude::DataType;
 use polars_core::schema::SchemaRef;
 use polars_lazy::frame::LazyFrame;
 use std::error::Error;
-
 
 pub fn add_binary_column_to_dataframe(df: &LazyFrame, split_expression: &Expr) -> LazyFrame {
     df.clone().with_column(
@@ -28,11 +27,7 @@ pub fn aggregate_binary_column(df: &LazyFrame) -> LazyFrame {
         .sort([BINARIZED_COLUMN, TARGET_COLUMN], Default::default())
 }
 
-pub fn get_total_information_value(
-    df: &LazyFrame,
-    split_expression: &Expr,
-) -> (f32, f32) {
-
+pub fn get_total_information_value(df: &LazyFrame, split_expression: &Expr) -> (f32, f32) {
     // Implement minimal bin size?
     let binary_df = add_binary_column_to_dataframe(df, split_expression);
     let aggregate_df = aggregate_binary_column(&binary_df).collect().unwrap();
@@ -47,20 +42,22 @@ pub fn get_total_information_value(
     let information_value_b =
         compute_information_single_category(category_b_label_0, category_b_label_1);
 
-    let minimum_bin_size = (category_a_label_0 + category_a_label_1).min(category_b_label_0 + category_b_label_1);
+    let minimum_bin_size =
+        (category_a_label_0 + category_a_label_1).min(category_b_label_0 + category_b_label_1);
 
     let total_information_value = information_value_a + information_value_b;
     (total_information_value, minimum_bin_size)
 }
 
 fn compute_information_single_category(first_value: f32, second_value: f32) -> f32 {
-    let epsilon: f32 = 1.0;
+    let epsilon: f32 = 0.01;
     let first_value = first_value;
     let second_value = second_value;
     let total_value = first_value + second_value;
     let first_proportion = first_value / total_value;
     let second_proportion = second_value / total_value;
-    (first_proportion - second_proportion) * ((first_value + epsilon) / (second_value + epsilon)).log2()
+    (first_proportion - second_proportion)
+        * ((first_value + epsilon) / (second_value + epsilon)).log2()
 }
 
 const NUMERIC_TYPES: [DataType; 10] = [
@@ -78,16 +75,16 @@ const NUMERIC_TYPES: [DataType; 10] = [
 
 #[derive(PartialEq, Debug)]
 pub enum ColumnType {
-    StringColumn,
-    NumericColumn,
+    CategoryColumn,
+    ContinuousColumn,
 }
 
 pub fn get_type_of_column(schema: &SchemaRef, column: &str) -> ColumnType {
     let dtype_column = schema.get(column).unwrap();
     if NUMERIC_TYPES.contains(dtype_column) {
-        return ColumnType::NumericColumn;
+        return ColumnType::ContinuousColumn;
     }
-    ColumnType::StringColumn
+    ColumnType::CategoryColumn
 }
 
 pub struct LeafValue {
@@ -113,25 +110,48 @@ pub fn get_leaf_value_for_column(
     df: &LazyFrame,
     schema: &SchemaRef,
     feature_column: &str,
+    minimum_bin_size: f32,
 ) -> Result<LeafValue, Box<dyn Error>> {
     // TODO: Implement multiple split expression
     let mut optimal_leaf_value: Option<LeafValue> = None;
     let split_expressions = splitting_columns::get_split_expressions(df, schema, feature_column)?;
 
-    for split_expression in split_expressions{
+    for split_expression in split_expressions {
+        // Extract loop value:
+        let (information_value, extracted_bin_size) =
+            get_total_information_value(df, &split_expression);
+        let leaf_value = LeafValue {
+            split_expression,
+            information_value,
+            minimum_bin_size: extracted_bin_size,
+        };
 
+        // Compare to optimal value:
+        match &optimal_leaf_value {
+            Some(optimal)
+                if leaf_value.information_value > optimal.information_value
+                    && leaf_value.minimum_bin_size > minimum_bin_size =>
+            {
+                optimal_leaf_value = Some(leaf_value);
+            }
+            None => {
+                optimal_leaf_value = Some(leaf_value);
+            }
+            _ => {}
+        }
     }
-    let (information_value, minimum_bin_size) = get_total_information_value(df, &split_expression);
 
-    Ok(LeafValue {
-        split_expression,
-        information_value,
-        minimum_bin_size,
-    })
+    optimal_leaf_value.ok_or_else(|| "No optimal leaf value found".into())
 
+    // let (information_value, minimum_bin_size) = get_total_information_value(df, &split_expression);
+
+    // Ok()
 }
 
-pub fn get_optimal_leaf_value_of_dataframe(df: &LazyFrame, minimum_bin_size: f32) -> Result<LeafValue, Box<dyn Error>> {
+pub fn get_optimal_leaf_value_of_dataframe(
+    df: &LazyFrame,
+    minimum_bin_size: f32,
+) -> Result<LeafValue, Box<dyn Error>> {
     let schema = df.logical_plan.compute_schema()?;
     let mut optimal_leaf_value: Option<LeafValue> = None;
 
@@ -140,9 +160,12 @@ pub fn get_optimal_leaf_value_of_dataframe(df: &LazyFrame, minimum_bin_size: f32
             continue;
         }
 
-        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column)?;
+        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column, minimum_bin_size)?;
         match &optimal_leaf_value {
-            Some(optimal) if leaf_value.information_value > optimal.information_value && leaf_value.minimum_bin_size > minimum_bin_size => {
+            Some(optimal)
+                if leaf_value.information_value > optimal.information_value
+                    && leaf_value.minimum_bin_size > minimum_bin_size =>
+            {
                 optimal_leaf_value = Some(leaf_value);
             }
             None => {
@@ -165,9 +188,9 @@ mod tests {
         let schema = df.logical_plan.compute_schema()?;
         assert_eq!(
             get_type_of_column(&schema, "Age"),
-            ColumnType::NumericColumn
+            ColumnType::ContinuousColumn
         );
-        assert_eq!(get_type_of_column(&schema, "Sex"), ColumnType::StringColumn);
+        assert_eq!(get_type_of_column(&schema, "Sex"), ColumnType::CategoryColumn);
         Ok(())
     }
 
@@ -175,7 +198,7 @@ mod tests {
     fn test_get_leaf_value_of_age() -> Result<(), Box<dyn Error>> {
         let df = get_preprocessed_test_dataframe();
         let schema = df.logical_plan.compute_schema()?;
-        let leaf_value = get_leaf_value_for_column(&df, &schema, "Age")?;
+        let leaf_value = get_leaf_value_for_column(&df, &schema, "Age", 32f32)?;
         assert!(leaf_value.information_value < 1.0);
         Ok(())
     }
@@ -183,7 +206,7 @@ mod tests {
     fn test_get_leaf_value_of_sex() -> Result<(), Box<dyn Error>> {
         let df = get_preprocessed_test_dataframe();
         let schema = df.logical_plan.compute_schema()?;
-        let leaf_value = get_leaf_value_for_column(&df, &schema, "Sex")?;
+        let leaf_value = get_leaf_value_for_column(&df, &schema, "Sex", 32f32)?;
         assert!(leaf_value.information_value > 1.0);
         Ok(())
     }
@@ -195,7 +218,10 @@ mod tests {
 
         let optimal_leaf_value = get_optimal_leaf_value_of_dataframe(&df, 32f32)?;
         let expected_split_expression: Expr = col("Sex").eq(lit("male"));
-        assert_eq!(expected_split_expression, optimal_leaf_value.split_expression);
+        assert_eq!(
+            expected_split_expression,
+            optimal_leaf_value.split_expression
+        );
         assert!(optimal_leaf_value.information_value > 1.0);
         println!("{:?}", optimal_leaf_value.information_value);
         println!("{:?}", optimal_leaf_value.split_expression);

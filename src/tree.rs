@@ -1,13 +1,12 @@
 use crate::extract_values::get_most_common_label;
 use crate::generic_functions::get_optimal_leaf_value_of_dataframe;
 use crate::preprocessing::add_target_column;
-use polars::prelude::{not, Expr, col};
+use polars::prelude::{col, not, Expr};
 use polars_lazy::frame::LazyFrame;
+use std::cmp;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Formatter;
-use std::cmp;
-
 
 #[derive(Clone)]
 struct Tree {
@@ -23,7 +22,6 @@ struct Tree {
 
 impl fmt::Display for Tree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         for n in 0..self.max_depth + 1 {
             writeln!(f, "{}", self.get_display_by_depth(n))?
         }
@@ -47,9 +45,9 @@ impl Tree {
 
     fn private_new(&self) -> Result<Self, Box<dyn Error>> {
         if self.is_final() {
-            return Err(
-                Box::from("A final tree can not be parent to a new tree".to_string()),
-            );
+            return Err(Box::from(
+                "A final tree can not be parent to a new tree".to_string(),
+            ));
         }
         Ok(Self {
             left_node: None,
@@ -81,7 +79,8 @@ impl Tree {
         }
 
         // Get split expression:
-        let leaf_value = get_optimal_leaf_value_of_dataframe(&df, self.minimal_sample_size).unwrap();
+        let leaf_value =
+            get_optimal_leaf_value_of_dataframe(&df, self.minimal_sample_size).unwrap();
         let split_expression = leaf_value.split_expression;
 
         // Define left and right node:
@@ -101,30 +100,40 @@ impl Tree {
     }
 
     fn display(&self) -> String {
-        if self.is_final(){
+        if self.is_final() {
             return self.label.unwrap().to_string();
         }
         return self.split_expression.clone().unwrap().to_string();
     }
 
     fn get_display_by_depth(&self, depth: u8) -> String {
-        if self.depth == depth{
+        if self.depth == depth {
             return self.display();
-        }
-        else{
-            let left_string = self.left_node.clone().unwrap().as_ref().get_display_by_depth(depth);
-            let right_string = self.right_node.clone().unwrap().as_ref().get_display_by_depth(depth);
+        } else {
+            let left_string = self
+                .left_node
+                .clone()
+                .unwrap()
+                .as_ref()
+                .get_display_by_depth(depth);
+            let right_string = self
+                .right_node
+                .clone()
+                .unwrap()
+                .as_ref()
+                .get_display_by_depth(depth);
             let indent = "  ".repeat(depth.pow(2) as usize); // Repeats "  " depth times
             let total_string = left_string + &indent + &right_string;
-            return total_string
+            return total_string;
         }
-
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::{get_raw_test_dataframe, get_preprocessed_test_dataframe, TITANIC_TARGET_COLUMN};
+    use crate::test_utils::{
+        get_preprocessed_test_dataframe, get_raw_test_dataframe, TITANIC_TARGET_COLUMN,
+    };
     use crate::tree::Tree;
     use polars_lazy::prelude::IntoLazy;
 
@@ -160,7 +169,7 @@ mod tests {
     pub fn test_depth_1() {
         let df = get_raw_test_dataframe().lazy();
         let mut tree: Tree = Tree::new(100f32, 1);
-        tree.fit(df, TITANIC_TARGET_COLUMN);        // assert_eq!(tree.label, Some(false));
+        tree.fit(df, TITANIC_TARGET_COLUMN); // assert_eq!(tree.label, Some(false));
         println!("{}", tree.left_node.unwrap().label.unwrap());
         println!("{}", tree.right_node.unwrap().label.unwrap());
     }
@@ -171,7 +180,6 @@ mod tests {
         let mut tree: Tree = Tree::new(100f32, 2);
         tree.fit(df, TITANIC_TARGET_COLUMN);
         println!("{}", tree);
-
     }
 
     #[test]
@@ -189,5 +197,4 @@ mod tests {
         tree.fit(df, TITANIC_TARGET_COLUMN);
         println!("{}", tree);
     }
-
 }

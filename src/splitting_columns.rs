@@ -14,8 +14,8 @@ pub fn get_split_expressions(
     feature_column: &str,
 ) -> Result<Vec<Expr>, Box<dyn Error>> {
     let split_expression = match generic_functions::get_type_of_column(schema, feature_column) {
-        ColumnType::StringColumn => get_mode_split_expression(df, feature_column)?,
-        ColumnType::NumericColumn => get_median_split_expression(df, feature_column)?,
+        ColumnType::CategoryColumn => get_mode_split_expression(df, feature_column)?,
+        ColumnType::ContinuousColumn => get_median_split_expression(df, feature_column)?,
     };
     Ok(vec![split_expression])
 }
