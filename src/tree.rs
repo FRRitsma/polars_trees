@@ -1,12 +1,10 @@
 use crate::extract_values::get_most_common_label;
 use crate::generic_functions::get_optimal_leaf_value_of_dataframe;
 use crate::preprocessing::add_target_column;
-use polars::prelude::{col, not, Expr};
+use polars::prelude::{not, Expr};
 use polars_lazy::frame::LazyFrame;
-use std::cmp;
 use std::error::Error;
 use std::fmt;
-use std::fmt::Formatter;
 
 #[derive(Clone)]
 struct Tree {
@@ -103,12 +101,12 @@ impl Tree {
         if self.is_final() {
             return self.label.unwrap().to_string();
         }
-        return self.split_expression.clone().unwrap().to_string();
+        self.split_expression.clone().unwrap().to_string()
     }
 
     fn get_display_by_depth(&self, depth: u8) -> String {
         if self.depth == depth {
-            return self.display();
+            self.display()
         } else {
             let left_string = self
                 .left_node
@@ -123,17 +121,15 @@ impl Tree {
                 .as_ref()
                 .get_display_by_depth(depth);
             let indent = "  ".repeat(depth.pow(2) as usize); // Repeats "  " depth times
-            let total_string = left_string + &indent + &right_string;
-            return total_string;
+
+            left_string + &indent + &right_string
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::{
-        get_preprocessed_test_dataframe, get_raw_test_dataframe, TITANIC_TARGET_COLUMN,
-    };
+    use crate::test_utils::{get_raw_test_dataframe, TITANIC_TARGET_COLUMN};
     use crate::tree::Tree;
     use polars_lazy::prelude::IntoLazy;
 

@@ -54,24 +54,25 @@ fn extract_equality_expressions_from_column(
     column_name: &str,
     top_column: &Column,
 ) -> Result<Vec<Expr>, Box<dyn Error>> {
-    let expressions = match top_column.dtype() {
-        DataType::Int64 => {
-            let top_vector: Vec<i64> = top_column.i64()?.into_no_null_iter().collect();
-            top_vector
+    match top_column.dtype() {
+        dt if dt.is_integer() => {
+            // Cast to i64 to handle all integer types uniformly
+            let casted = top_column.cast(&DataType::Int64)?;
+            let top_vector: Vec<i64> = casted.i64()?.into_no_null_iter().collect();
+            Ok(top_vector
                 .into_iter()
                 .map(|i| col(column_name).eq(lit(i)))
-                .collect()
+                .collect())
         }
         DataType::String => {
             let top_vector: Vec<&str> = top_column.str()?.into_no_null_iter().collect();
-            top_vector
+            Ok(top_vector
                 .into_iter()
                 .map(|i| col(column_name).eq(lit(i)))
-                .collect()
+                .collect())
         }
-        _ => return Err("Unsupported data type!".into()),
-    };
-    Ok(expressions)
+        _ => Err("Unsupported data type!".into()),
+    }
 }
 
 pub fn get_equality_expression_categories(
@@ -80,7 +81,7 @@ pub fn get_equality_expression_categories(
     top_n: IdxSize,
     minimum_bin_size: i32,
 ) -> Result<Vec<Expr>, Box<dyn Error>> {
-    let top_df = get_most_common_values_as_df(&lf, column_name, top_n, minimum_bin_size)?;
+    let top_df = get_most_common_values_as_df(lf, column_name, top_n, minimum_bin_size)?;
     let top_column = top_df.column(column_name)?;
     let expressions = extract_equality_expressions_from_column(column_name, top_column)?;
     Ok(expressions)

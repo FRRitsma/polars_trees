@@ -4,7 +4,6 @@ use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN, T
 use crate::extract_values::extract_count;
 use crate::splitting_columns;
 use polars::prelude::{col, lit, when, Expr};
-use polars_core::frame::DataFrame;
 use polars_core::prelude::DataType;
 use polars_core::schema::SchemaRef;
 use polars_lazy::frame::LazyFrame;
@@ -60,7 +59,22 @@ fn compute_information_single_category(first_value: f32, second_value: f32) -> f
         * ((first_value + epsilon) / (second_value + epsilon)).log2()
 }
 
-const NUMERIC_TYPES: [DataType; 10] = [
+pub const CATEGORICAL_TYPES: [DataType; 10] = [
+    DataType::Int8,
+    DataType::Boolean,
+    DataType::Int16,
+    DataType::Int32,
+    DataType::Int64,
+    DataType::UInt8,
+    DataType::UInt16,
+    DataType::UInt32,
+    DataType::UInt64,
+    DataType::String,
+];
+
+pub const CONTINUOUS_TYPES: [DataType; 10] = [
+    DataType::Float32,
+    DataType::Float64,
     DataType::Int8,
     DataType::Int16,
     DataType::Int32,
@@ -69,23 +83,8 @@ const NUMERIC_TYPES: [DataType; 10] = [
     DataType::UInt16,
     DataType::UInt32,
     DataType::UInt64,
-    DataType::Float32,
-    DataType::Float64,
 ];
 
-#[derive(PartialEq, Debug)]
-pub enum ColumnType {
-    CategoryColumn,
-    ContinuousColumn,
-}
-
-pub fn get_type_of_column(schema: &SchemaRef, column: &str) -> ColumnType {
-    let dtype_column = schema.get(column).unwrap();
-    if NUMERIC_TYPES.contains(dtype_column) {
-        return ColumnType::ContinuousColumn;
-    }
-    ColumnType::CategoryColumn
-}
 
 pub struct LeafValue {
     // TODO: Add sample count
@@ -183,21 +182,6 @@ pub fn get_optimal_leaf_value_of_dataframe(
 mod tests {
     use super::*;
     use crate::test_utils::get_preprocessed_test_dataframe;
-
-    #[test]
-    fn test_get_type_of_column() -> Result<(), Box<dyn Error>> {
-        let df = get_preprocessed_test_dataframe();
-        let schema = df.logical_plan.compute_schema()?;
-        assert_eq!(
-            get_type_of_column(&schema, "Age"),
-            ColumnType::ContinuousColumn
-        );
-        assert_eq!(
-            get_type_of_column(&schema, "Sex"),
-            ColumnType::CategoryColumn
-        );
-        Ok(())
-    }
 
     #[test]
     fn test_get_leaf_value_of_age() -> Result<(), Box<dyn Error>> {
