@@ -1,7 +1,6 @@
 use crate::constants::{BINARIZED_COLUMN, COUNT_COLUMN, TARGET_COLUMN};
-use polars::prelude::{col, lit, PolarsError, PolarsResult};
+use polars::prelude::{col, lit, PolarsError};
 use polars_core::frame::DataFrame;
-use polars_core::prelude::SortOptions;
 use polars_lazy::frame::LazyFrame;
 use polars_lazy::prelude::IntoLazy;
 
@@ -67,11 +66,10 @@ mod tests {
     }
 
     #[test]
-    pub fn test_get_most_common_label_return_false() -> PolarsResult<()> {
+    pub fn test_get_most_common_label_return_false() {
         let df = test_mostly_false_df();
-        let mode = get_most_common_label(&df.lazy())?;
-        assert_eq!(mode, false);
-        Ok(())
+        let mode = get_most_common_label(&df.lazy()).unwrap();
+        assert!(!mode);
     }
 
     #[test]

@@ -9,6 +9,7 @@ pub fn add_target_column(df: LazyFrame, target_column: &str) -> LazyFrame {
             .cast(DataType::Boolean)
             .alias(TARGET_COLUMN),
     )
+    .drop([col(target_column)])
 }
 
 // TODO: Add fail safe to ensure TARGET_COLUMN doesn't already exist in dataframe
@@ -16,11 +17,11 @@ pub fn add_target_column(df: LazyFrame, target_column: &str) -> LazyFrame {
 #[cfg(test)]
 mod tests {
     use crate::preprocessing::add_target_column;
-    use crate::test_utils::get_raw_dataframe;
+    use crate::test_utils::get_raw_test_dataframe;
 
     #[test]
     fn test_add_target_column() {
-        let df = get_raw_dataframe();
+        let df = get_raw_test_dataframe();
         let df = add_target_column(df, "Survived");
         let _ = df.collect().unwrap();
     }

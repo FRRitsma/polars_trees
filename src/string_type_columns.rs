@@ -47,14 +47,13 @@ mod tests {
     use crate::constants::BINARIZED_COLUMN;
     use crate::generic_functions;
     use crate::generic_functions::add_binary_column_to_dataframe;
-    use crate::test_utils::get_test_dataframe;
+    use crate::test_utils::get_preprocessed_test_dataframe;
 
     const FEATURE_COLUMN: &str = "Sex";
-    const TARGET_COLUMN: &str = "Survived";
 
     #[test]
     fn test_get_split_expression_for_category_sex() -> Result<(), Box<dyn Error>> {
-        let df = get_test_dataframe();
+        let df = get_preprocessed_test_dataframe();
         let split_expression = get_mode_split_expression(&df, FEATURE_COLUMN)?;
         let expected_split_expression = col(FEATURE_COLUMN).eq(lit("male"));
         assert_eq!(split_expression, expected_split_expression);
@@ -63,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_split_feature_column_into_a_and_b_category() -> Result<(), Box<dyn Error>> {
-        let df = get_test_dataframe();
+        let df = get_preprocessed_test_dataframe();
         let split_expression = get_mode_split_expression(&df, FEATURE_COLUMN)?;
         let binary_df = add_binary_column_to_dataframe(&df, &split_expression)
             .select([col(FEATURE_COLUMN), col(BINARIZED_COLUMN)])
@@ -74,11 +73,11 @@ mod tests {
 
     #[test]
     fn test_get_total_information_for_sex_column() -> Result<(), Box<dyn Error>> {
-        let df = get_test_dataframe();
+        let df = get_preprocessed_test_dataframe();
 
         let split_expression = get_mode_split_expression(&df, FEATURE_COLUMN)?;
-        let total_information_value =
-            generic_functions::get_total_information_value(&df, &split_expression)?;
+        let (total_information_value, _) =
+            generic_functions::get_total_information_value(&df, &split_expression);
 
         println!("{:?}", total_information_value);
         assert!(total_information_value > 1.0);

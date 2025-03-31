@@ -30,12 +30,12 @@ mod tests {
     use super::*;
     use crate::constants::BINARIZED_COLUMN;
     use crate::generic_functions::{add_binary_column_to_dataframe, get_total_information_value};
-    use crate::test_utils::get_test_dataframe;
+    use crate::test_utils::get_preprocessed_test_dataframe;
     use polars::prelude::col;
 
     #[test]
     fn test_get_median_of_age() -> Result<(), Box<dyn Error>> {
-        let df = get_test_dataframe();
+        let df = get_preprocessed_test_dataframe();
         let median_of_age = get_median_of_column(&df, "Age")?;
         assert!(median_of_age > 10.0);
         Ok(())
@@ -43,7 +43,7 @@ mod tests {
 
     #[test]
     fn test_split_age() -> Result<(), Box<dyn Error>> {
-        let df = get_test_dataframe();
+        let df = get_preprocessed_test_dataframe();
         let split_expression = get_median_split_expression(&df, "Age")?;
         let binary_df = add_binary_column_to_dataframe(&df, &split_expression)
             .select([col("Age"), col(BINARIZED_COLUMN)])
@@ -54,10 +54,10 @@ mod tests {
 
     #[test]
     fn test_get_total_information_for_age_column() -> Result<(), Box<dyn Error>> {
-        let df = get_test_dataframe();
+        let df = get_preprocessed_test_dataframe();
 
         let split_expression = get_median_split_expression(&df, "Age")?;
-        let total_information_value = get_total_information_value(&df, &split_expression)?;
+        let (total_information_value, _) = get_total_information_value(&df, &split_expression);
 
         println!("{:?}", total_information_value);
         assert!(total_information_value < 1.0);

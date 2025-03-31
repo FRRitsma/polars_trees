@@ -7,7 +7,7 @@ use polars_lazy::frame::{IntoLazy, LazyFrame};
 pub const FILE_PATH: &str = "Titanic-Dataset.csv";
 pub const TITANIC_TARGET_COLUMN: &str = "Survived";
 
-pub fn get_raw_dataframe() -> LazyFrame {
+pub fn get_raw_test_dataframe() -> LazyFrame {
     CsvReadOptions::default()
         .try_into_reader_with_file_path(Some(FILE_PATH.into()))
         .unwrap()
@@ -16,6 +16,6 @@ pub fn get_raw_dataframe() -> LazyFrame {
         .lazy()
 }
 
-pub fn get_test_dataframe() -> LazyFrame {
-    add_target_column(get_raw_dataframe(), TITANIC_TARGET_COLUMN)
+pub fn get_preprocessed_test_dataframe() -> LazyFrame {
+    add_target_column(get_raw_test_dataframe(), TITANIC_TARGET_COLUMN)
 }
