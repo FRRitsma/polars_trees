@@ -1,5 +1,4 @@
 use crate::categorical_columns::get_equality_expression_categories;
-use crate::generic_functions;
 use crate::generic_functions::{CATEGORICAL_TYPES, CONTINUOUS_TYPES};
 use crate::numeric_type_columns::get_median_split_expression;
 use polars::prelude::Expr;

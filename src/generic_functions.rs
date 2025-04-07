@@ -85,7 +85,6 @@ pub const CONTINUOUS_TYPES: [DataType; 10] = [
     DataType::UInt64,
 ];
 
-
 pub struct LeafValue {
     // TODO: Add sample count
     pub(crate) split_expression: Expr,

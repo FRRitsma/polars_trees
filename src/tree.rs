@@ -105,7 +105,7 @@ impl Tree {
     }
 
     fn get_display_by_depth(&self, depth: u8) -> String {
-        if self.depth == depth {
+        if self.depth >= depth {
             self.display()
         } else {
             let left_string = self
@@ -120,6 +120,8 @@ impl Tree {
                 .unwrap()
                 .as_ref()
                 .get_display_by_depth(depth);
+
+
             let indent = "  ".repeat(depth.pow(2) as usize); // Repeats "  " depth times
 
             left_string + &indent + &right_string
