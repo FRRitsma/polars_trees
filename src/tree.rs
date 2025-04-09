@@ -121,11 +121,36 @@ impl Tree {
                 .as_ref()
                 .get_display_by_depth(depth);
 
-
             let indent = "  ".repeat(depth.pow(2) as usize); // Repeats "  " depth times
 
             left_string + &indent + &right_string
         }
+    }
+
+    fn new_display_function(&self) -> String {
+        todo!();
+        // if self.is_final(){
+        //     return self.label.unwrap().to_string();
+        // }
+        // else {
+        //     let center_
+        //
+        //     let left_string = self
+        //         .left_node
+        //         .clone()
+        //         .unwrap()
+        //         .as_ref()
+        //         .new_display_function();
+        //     let right_string = self
+        //         .right_node
+        //         .clone()
+        //         .unwrap()
+        //         .as_ref()
+        //         .new_display_function();
+        //
+        //
+        //     right_string
+        // }
     }
 }
 
