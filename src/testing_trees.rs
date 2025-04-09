@@ -98,15 +98,12 @@ impl DisplayTree {
 
     fn _fit_display_tree_recursive<T: BinaryTree>(input: &T, depth: u8) -> Self {
         let mut tree = Self::_new(input.display_string(), depth);
-
         if let Some(left) = input.get_left() {
             tree.left_node = Some(Box::new(Self::_fit_display_tree_recursive(left, depth + 1)));
         }
-
         if let Some(right) = input.get_right() {
             tree.right_node = Some(Box::new(Self::_fit_display_tree_recursive(right, depth + 1)));
         }
-
         tree
     }
 
@@ -188,6 +185,7 @@ impl DisplayTree {
         2. If node has one child and it is centered, center self
         3. Assume parent_placement, and pass it on to child
         */
+
 
         let self_placement: FormatPlacement;
 
