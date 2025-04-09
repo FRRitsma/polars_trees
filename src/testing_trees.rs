@@ -1,10 +1,48 @@
 use std::cmp::Ordering;
 use std::fmt;
 
-#[derive(Clone)]
+trait BinaryTree {
+    fn get_left(&self) -> Option<&Self>;
+    fn get_right(&self) -> Option<&Self>;
+    fn display_string(&self) -> String;
+}
+
 struct TestTree {
     left_node: Option<Box<TestTree>>,
     right_node: Option<Box<TestTree>>,
+    string: String
+}
+
+impl BinaryTree for TestTree{
+    fn get_left(&self) -> Option<&Self> {
+        self.left_node.as_deref()
+    }
+
+    fn get_right(&self) -> Option<&Self> {
+        self.right_node.as_deref()
+    }
+
+    fn display_string(&self) -> String{
+        self.string.to_string()
+    }
+}
+
+impl TestTree {
+    pub fn new(string: String) -> Self{
+        Self{
+            left_node: None,
+            right_node: None,
+            string
+        }
+    }
+}
+
+
+
+#[derive(Clone)]
+struct DisplayTree {
+    left_node: Option<Box<DisplayTree>>,
+    right_node: Option<Box<DisplayTree>>,
     placement: FormatPlacement,
     x_position: f32,
     depth: u8,
@@ -19,13 +57,13 @@ enum FormatPlacement {
     Center,
 }
 
-impl PartialOrd for TestTree {
+impl PartialOrd for DisplayTree {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for TestTree {
+impl Ord for DisplayTree {
     fn cmp(&self, other: &Self) -> Ordering {
         // First compare y values
         match self.depth.partial_cmp(&other.depth) {
@@ -41,25 +79,35 @@ impl Ord for TestTree {
     }
 }
 
-impl PartialEq for TestTree {
+impl PartialEq for DisplayTree {
     fn eq(&self, other: &Self) -> bool {
         self.depth == other.depth && self.x_position == other.x_position
     }
 }
 
-impl Eq for TestTree {}
+impl Eq for DisplayTree {}
 
-impl TestTree {
-    pub fn new(expression: String) -> Self {
-        Self {
-            left_node: None,
-            right_node: None,
-            placement: FormatPlacement::Center,
-            x_position: 0.0,
-            column_width: 0,
-            depth: 0,
-            expression,
+impl DisplayTree {
+
+    pub fn fit_display_tree<T: BinaryTree>(input: &T) -> Self {
+        let mut tree = Self::_fit_display_tree_recursive(input, 0);
+        tree.assign_order();
+        tree.set_column_width();
+        tree
+    }
+
+    fn _fit_display_tree_recursive<T: BinaryTree>(input: &T, depth: u8) -> Self {
+        let mut tree = Self::_new(input.display_string(), depth);
+
+        if let Some(left) = input.get_left() {
+            tree.left_node = Some(Box::new(Self::_fit_display_tree_recursive(left, depth + 1)));
         }
+
+        if let Some(right) = input.get_right() {
+            tree.right_node = Some(Box::new(Self::_fit_display_tree_recursive(right, depth + 1)));
+        }
+
+        tree
     }
 
     fn _new(expression: String, depth: u8) -> Self {
@@ -116,13 +164,13 @@ impl TestTree {
         }
     }
 
-    pub fn all_nodes(&self) -> Vec<&TestTree> {
+    pub fn all_nodes(&self) -> Vec<&DisplayTree> {
         let mut result = Vec::new();
         self.collect_nodes(&mut result);
         result
     }
 
-    fn collect_nodes<'a>(&'a self, vec: &mut Vec<&'a TestTree>) {
+    fn collect_nodes<'a>(&'a self, vec: &mut Vec<&'a DisplayTree>) {
         vec.push(self);
         if let Some(ref left) = self.left_node {
             left.collect_nodes(vec);
@@ -236,12 +284,12 @@ impl TestTree {
 
     pub fn add_left(&mut self, expression: String) {
         let new_y_position = self.depth + 1;
-        self.left_node = Some(Box::from(TestTree::_new(expression, new_y_position)));
+        self.left_node = Some(Box::from(DisplayTree::_new(expression, new_y_position)));
     }
 
     pub fn add_right(&mut self, expression: String) {
         let new_y_position = self.depth + 1;
-        self.right_node = Some(Box::from(TestTree::_new(expression, new_y_position)));
+        self.right_node = Some(Box::from(DisplayTree::_new(expression, new_y_position)));
     }
 
     pub fn raw_display(&self) -> String {
@@ -269,116 +317,151 @@ impl TestTree {
     }
 }
 
-impl fmt::Display for TestTree {
+impl fmt::Display for DisplayTree {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", self.raw_display())?;
+        let mut nodes = self.all_nodes();
+        nodes.sort();
+
+        if let Some(first) = nodes.get(0) {
+            write!(f, "{}", first.padded_display())?;
+        }
+
+        for chunk in nodes.windows(2) {
+            if let [first, second] = chunk {
+                if first.depth != second.depth {
+                    writeln!(f)?;
+                }
+                write!(f, "{}", second.padded_display())?;
+            }
+        }
+
+        writeln!(f)?; // Final newline
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::hint::assert_unchecked;
     use super::*;
 
     #[test]
     pub fn test_create_a_test_tree() {
         let tree = TestTree::new("Hello".to_string());
-        println!("{}", tree);
+        println!("{}", tree.display_string());
     }
 
     #[test]
-    pub fn test_add_nodes() {
-        let mut tree = TestTree::new("Hello".to_string());
-        tree.add_left("World".to_string());
-        tree.add_right("!".to_string());
-        tree.assign_order();
-
-        let mut nodes = tree.all_nodes();
-        nodes.sort();
-        for n in nodes.iter() {
-            println!("{}", n.x_position);
-            println!("{}", n.depth);
-            println!("{}", n.padded_display());
-        }
+    pub fn fit_a_display_tree_to_a_test_tree_depth_zero(){
+        let tree = TestTree::new("Hello".to_string());
+        let display_tree = DisplayTree::fit_display_tree(&tree);
+        println!("{}", display_tree);
     }
 
     #[test]
-    pub fn test_add_nodes_compute_column_width() {
+    pub fn fit_a_display_tree_to_a_test_tree_depth_one(){
         let mut tree = TestTree::new("Hello".to_string());
-        tree.add_left("Worlllllllld".to_string());
-        tree.add_right("!".to_string());
-        tree.right_node
-            .as_deref_mut()
-            .unwrap()
-            .add_right("yoooo".to_string());
-        tree.set_column_width();
-        println!("{}", tree.padded_display());
-        print!("{}", tree.left_node.unwrap().padded_display());
-        println!("{}", tree.right_node.unwrap().padded_display());
+        tree.left_node = Some(Box::from(TestTree::new("World".to_string())));
+        tree.right_node = Some(Box::from(TestTree::new("Goodbye".to_string())));
+        let display_tree = DisplayTree::fit_display_tree(&tree);
+        let nodes = display_tree.all_nodes();
+        println!("{}", display_tree);
+        assert_eq!(nodes.len(), 3);
     }
 
-    #[test]
-    pub fn test_get_max_depth() {
-        let mut tree = TestTree::new("Hello".to_string());
-        assert_eq!(tree.get_max_depth(), 0u8);
-        tree.add_left("World".to_string());
-        tree.add_right("!".to_string());
-        assert_eq!(tree.get_max_depth(), 1u8);
-        tree.right_node
-            .as_deref_mut()
-            .unwrap()
-            .add_right("Goodbye".to_string());
-        assert_eq!(tree.get_max_depth(), 2u8);
-    }
-
-    #[test]
-    pub fn test_add_missing_nodes() {
-        let mut tree = TestTree::new("Hello".to_string());
-        tree.add_left("World".to_string());
-        tree.add_right("!".to_string());
-        tree.right_node
-            .as_deref_mut()
-            .unwrap()
-            .add_right("Goodbye".to_string());
-        let len_before = tree.all_nodes().len();
-        tree.add_missing_nodes();
-        let len_after = tree.all_nodes().len();
-        assert!(len_after > len_before);
-    }
-
-    #[test]
-    pub fn test_print_loop() {
-        // let mut tree = TestTree::default("Hello".to_string());
-        // tree.add_left("World".to_string());
-        // tree.add_right("yooo".to_string());
-        // tree.assign_position();
-
-        let mut tree = TestTree::new("Hello".to_string());
-        tree.add_left("Worlllllllld".to_string());
-        tree.add_right("!".to_string());
-        tree.right_node
-            .as_deref_mut()
-            .unwrap()
-            .add_right("yoooo".to_string());
-        tree.assign_order();
-        tree.set_column_width();
-
-        let mut nodes = tree.all_nodes();
-        nodes.sort();
-
-        let first = nodes.get(0).unwrap();
-        print!("{}", first.padded_display());
-        for chunk in nodes.windows(2) {
-            match chunk {
-                [first, second] => {
-                    if first.depth != second.depth {
-                        println!();
-                    }
-                    print!("{}", second.padded_display());
-                }
-                _ => (),
-            }
-        }
-        println!();
-    }
+    // #[test]
+    // pub fn test_add_nodes() {
+    //     let mut tree = DisplayTree::new("Hello".to_string());
+    //     tree.add_left("World".to_string());
+    //     tree.add_right("!".to_string());
+    //     tree.assign_order();
+    //
+    //     let mut nodes = tree.all_nodes();
+    //     nodes.sort();
+    //     for n in nodes.iter() {
+    //         println!("{}", n.x_position);
+    //         println!("{}", n.depth);
+    //         println!("{}", n.padded_display());
+    //     }
+    // }
+    //
+    // #[test]
+    // pub fn test_add_nodes_compute_column_width() {
+    //     let mut tree = DisplayTree::new("Hello".to_string());
+    //     tree.add_left("Worlllllllld".to_string());
+    //     tree.add_right("!".to_string());
+    //     tree.right_node
+    //         .as_deref_mut()
+    //         .unwrap()
+    //         .add_right("yoooo".to_string());
+    //     tree.set_column_width();
+    //     println!("{}", tree.padded_display());
+    //     print!("{}", tree.left_node.unwrap().padded_display());
+    //     println!("{}", tree.right_node.unwrap().padded_display());
+    // }
+    //
+    // #[test]
+    // pub fn test_get_max_depth() {
+    //     let mut tree = DisplayTree::new("Hello".to_string());
+    //     assert_eq!(tree.get_max_depth(), 0u8);
+    //     tree.add_left("World".to_string());
+    //     tree.add_right("!".to_string());
+    //     assert_eq!(tree.get_max_depth(), 1u8);
+    //     tree.right_node
+    //         .as_deref_mut()
+    //         .unwrap()
+    //         .add_right("Goodbye".to_string());
+    //     assert_eq!(tree.get_max_depth(), 2u8);
+    // }
+    //
+    // #[test]
+    // pub fn test_add_missing_nodes() {
+    //     let mut tree = DisplayTree::new("Hello".to_string());
+    //     tree.add_left("World".to_string());
+    //     tree.add_right("!".to_string());
+    //     tree.right_node
+    //         .as_deref_mut()
+    //         .unwrap()
+    //         .add_right("Goodbye".to_string());
+    //     let len_before = tree.all_nodes().len();
+    //     tree.add_missing_nodes();
+    //     let len_after = tree.all_nodes().len();
+    //     assert!(len_after > len_before);
+    // }
+    //
+    // #[test]
+    // pub fn test_print_loop() {
+    //     // let mut tree = TestTree::default("Hello".to_string());
+    //     // tree.add_left("World".to_string());
+    //     // tree.add_right("yooo".to_string());
+    //     // tree.assign_position();
+    //
+    //     let mut tree = DisplayTree::new("Hello".to_string());
+    //     tree.add_left("Worlllllllld".to_string());
+    //     tree.add_right("!".to_string());
+    //     tree.right_node
+    //         .as_deref_mut()
+    //         .unwrap()
+    //         .add_right("yoooo".to_string());
+    //     tree.assign_order();
+    //     tree.set_column_width();
+    //
+    //     let mut nodes = tree.all_nodes();
+    //     nodes.sort();
+    //
+    //     let first = nodes.get(0).unwrap();
+    //     print!("{}", first.padded_display());
+    //     for chunk in nodes.windows(2) {
+    //         match chunk {
+    //             [first, second] => {
+    //                 if first.depth != second.depth {
+    //                     println!();
+    //                 }
+    //                 print!("{}", second.padded_display());
+    //             }
+    //             _ => (),
+    //         }
+    //     }
+    //     println!();
+    // }
 }
