@@ -10,13 +10,14 @@ use polars::prelude::*;
 mod categorical_columns;
 mod constants;
 mod debug;
+mod display_tree;
+mod empty_tree;
 mod extract_values;
 mod generic_functions;
 mod numeric_type_columns;
 mod preprocessing;
 mod splitting_columns;
 mod test_utils;
-mod testing_trees;
 mod tree;
 
 fn create_split_in_dataframe(
