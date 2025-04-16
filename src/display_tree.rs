@@ -90,6 +90,10 @@ impl DisplayTree {
             .saturating_sub(self.display_offset.unwrap() + self.raw_display_len())
     }
 
+    fn mid_point(&self) -> usize{
+        self.display_offset.unwrap() + (self.raw_display_len() / 2)
+    }
+
     fn format_tree(&mut self) {
         self.add_missing_nodes();
         self.assign_horizontal_order();
