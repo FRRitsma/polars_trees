@@ -8,6 +8,7 @@ use std::error::Error;
 use polars::prelude::*;
 
 mod categorical_columns;
+mod categorical_columns_remake;
 mod constants;
 mod debug;
 mod display_tree;
@@ -19,6 +20,7 @@ mod preprocessing;
 mod splitting_columns;
 mod test_utils;
 mod tree;
+mod tree_remake;
 
 fn create_split_in_dataframe(
     df: &LazyFrame,

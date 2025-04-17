@@ -18,22 +18,24 @@ fn get_n_unique_values(lf: LazyFrame, column: &str) -> Result<u32, Box<dyn Error
     Ok(distinct_values)
 }
 
-fn get_most_common_values_as_df(
+pub fn old_get_most_common_values_as_df(
     lf: &LazyFrame,
     column_name: &str,
     top_n: IdxSize,
     minimum_bin_size: i32,
 ) -> Result<DataFrame, Box<dyn Error>> {
-    // Return format example:
-    // column_name = Pclass
-    // ┌────────┬───────┐
-    // │ Pclass ┆ count │
-    // │ ---    ┆ ---   │
-    // │ i64    ┆ u32   │
-    // ╞════════╪═══════╡
-    // │ 3      ┆ 491   │
-    // │ 1      ┆ 216   │
-    // └────────┴───────┘
+    /*
+    Return format example:
+    column_name = Pclass
+    ┌────────┬───────┐
+    │ Pclass ┆ count │
+    │ ---    ┆ ---   │
+    │ i64    ┆ u32   │
+    ╞════════╪═══════╡
+    │ 3      ┆ 491   │
+    │ 1      ┆ 216   │
+    └────────┴───────┘
+     */
 
     let count_column = "count";
     let top_df = lf
@@ -81,7 +83,7 @@ pub fn get_equality_expression_categories(
     top_n: IdxSize,
     minimum_bin_size: i32,
 ) -> Result<Vec<Expr>, Box<dyn Error>> {
-    let top_df = get_most_common_values_as_df(lf, column_name, top_n, minimum_bin_size)?;
+    let top_df = old_get_most_common_values_as_df(lf, column_name, top_n, minimum_bin_size)?;
     let top_column = top_df.column(column_name)?;
     let expressions = extract_equality_expressions_from_column(column_name, top_column)?;
     Ok(expressions)
@@ -108,7 +110,7 @@ mod tests {
         let top_n = 3;
         let minimum_bin_size = 200;
 
-        let top_df = get_most_common_values_as_df(&lf, column_name, top_n, minimum_bin_size)?;
+        let top_df = old_get_most_common_values_as_df(&lf, column_name, top_n, minimum_bin_size)?;
         let top_column = top_df.column(column_name)?;
         let top_vector: Vec<i64> = top_column.i64()?.into_no_null_iter().collect();
 
