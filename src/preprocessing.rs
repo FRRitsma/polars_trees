@@ -2,7 +2,7 @@ use crate::constants::TARGET_COLUMN;
 use crate::tree_remake::Settings;
 use polars::prelude::{col, lit, when, IdxSize, PlSmallStr};
 use polars_core::datatypes::DataType;
-use polars_core::prelude::{DataFrame, NamedFrom, SortMultipleOptions};
+use polars_core::prelude::{NamedFrom, SortMultipleOptions};
 use polars_core::series::Series;
 use polars_lazy::frame::LazyFrame;
 use std::error::Error;
@@ -69,7 +69,6 @@ pub fn prune_single_string_column(
     column_name: &str,
     keep_values: Vec<String>,
 ) -> Result<LazyFrame, Box<dyn Error>> {
-
     /*
     If a string isn't prevalent enough to be able to be a label rename it
     to simplify further processing
@@ -98,7 +97,7 @@ pub fn prune_single_string_column(
     Ok(pruned_lf)
 }
 
-pub fn pre_process_dataframe(lf: LazyFrame, settings: Settings, target_column: &str) -> LazyFrame{
+pub fn pre_process_dataframe(lf: LazyFrame, settings: Settings, target_column: &str) -> LazyFrame {
     let lf = add_target_column(lf, target_column);
     let lf = prune_string_dataframe(lf, settings);
     lf
@@ -118,9 +117,6 @@ fn prune_string_dataframe(lf: LazyFrame, settings: Settings) -> LazyFrame {
     }
     pruned_df
 }
-
-// TODO: Add fail safe to ensure TARGET_COLUMN doesn't already exist in dataframe
-
 
 #[cfg(test)]
 mod tests {

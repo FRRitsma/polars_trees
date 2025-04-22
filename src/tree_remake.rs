@@ -15,7 +15,7 @@ impl Settings {
     }
 
     pub fn default() -> Self {
-        Self::new(4, 128, 6)
+        Self::new(4, 32, 6)
     }
 
     pub fn get_max_depth(&self) -> u8 {

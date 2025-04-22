@@ -1,8 +1,8 @@
 use crate::preprocessing::{add_target_column, pre_process_dataframe};
+use crate::tree_remake::Settings;
 use polars::io::SerReader;
 use polars::prelude::CsvReadOptions;
 use polars_lazy::frame::{IntoLazy, LazyFrame};
-use crate::tree_remake::Settings;
 
 // This allows the test module to access the functions in the outer scope
 pub const FILE_PATH: &str = "Titanic-Dataset.csv";

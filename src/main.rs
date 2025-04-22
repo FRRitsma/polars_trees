@@ -15,6 +15,7 @@ mod display_tree;
 mod empty_tree;
 mod extract_values;
 mod generic_functions;
+mod gini_impurity;
 mod numeric_type_columns;
 mod preprocessing;
 mod splitting_columns;
