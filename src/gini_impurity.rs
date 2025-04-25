@@ -8,14 +8,19 @@ use polars_lazy::frame::LazyFrame;
 
 // TODO: Add fail safe to ensure TARGET_COLUMN doesn't already exist in dataframe
 
-const COUNT_IN_COLUMN: &str = "count_in";
-const COUNT_OUT_COLUMN: &str = "count_out";
+const QUANTILES: [f64; 8] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9];
+const COUNT_IN: &str = "count_in";
+const COUNT_OUT: &str = "count_out";
 const GINI_IMPURITY_IN_GROUP: &str = "gini_in";
-
-
-fn compute_parent_gini_impurity(
-    lf: &LazyFrame,
-) -> Result<f64, Box<dyn std::error::Error>> {
+const GINI_IMPURITY_OUT_GROUP: &str = "gini_out";
+const TOTAL_IN_GROUP: &str = "total_in_group";
+const TOTAL_OUT_GROUP: &str = "total_out_group";
+const FEATURE_COLUMN_NAME: &str = "FEATURE_COLUMN_NAME";
+const SORT_TYPE: &str = "SORT_TYPE";
+const TEMP_COLUMN_ORDINAL: &str = "temp_ordinal";
+const SELECTION_COLUMN: &str = "SELECTION_COLUMN";
+const NORMALIZED_CHILD_GINI: &str = "NORMALIZED_CHILD_GINI";
+fn compute_parent_gini_impurity(lf: &LazyFrame) -> Result<f64, Box<dyn std::error::Error>> {
     let temp_column = "temp";
 
     let mut grouped = lf
@@ -57,11 +62,8 @@ fn compute_parent_gini_impurity(
             .unwrap()
             .get(0)
             .unwrap();
-    Ok((gini_impurity))
+    Ok(gini_impurity)
 }
-
-
-
 
 #[cfg(test)]
 mod tests {
@@ -69,10 +71,65 @@ mod tests {
     use crate::constants::TARGET_COLUMN;
     use crate::preprocessing::REDUNDANT_STRING_VALUE;
     use crate::test_utils::get_preprocessed_test_dataframe;
-    use polars::prelude::{col, lit, GetOutput, JoinArgs, PlSmallStr};
+    use polars::prelude::{col, lit, JoinArgs, UnionArgs};
     use polars_core::df;
-    use polars_core::prelude::{BooleanChunked, ChunkCompareEq, FillNullStrategy};
+    use polars_core::prelude::{SortMultipleOptions, SortOptions, UniqueKeepStrategy};
     use polars_core::utils::rayon::join;
+    use polars_core::utils::Container;
+    use polars_lazy::dsl::concat;
+    use polars_lazy::prelude::IntoLazy;
+
+    #[test]
+    fn test_gini_for_categorical_column() -> Result<(), Box<dyn std::error::Error>> {
+        unsafe {
+            std::env::set_var("POLARS_FMT_MAX_COLS", "100");
+        }
+
+        let mut lf = get_preprocessed_test_dataframe();
+        lf = lf.drop([TARGET_COLUMN]);
+        let feature_column = "Embarked";
+        let target_column = "Pclass";
+        lf = lf.rename([target_column], [TARGET_COLUMN], true);
+
+        // END OF PRE-PROCESSING, start of Gini computation:
+        lf = pre_process_for_gini(&lf, SortType::Categorical, feature_column);
+        let mut grouped_lf = group_by_for_gini_impurity_categorical(&lf);
+        grouped_lf = add_totals_of_in_out_group(&grouped_lf);
+        let gini_lf = compute_gini_per_feature(&grouped_lf);
+        let normalized_gini_lf = normalize_gini_per_group(&grouped_lf, &gini_lf);
+
+        // Keep only necessary columns and obtain best result:
+        let final_lf = normalized_gini_lf
+            .select([
+                col(FEATURE_COLUMN_NAME),
+                col(SORT_TYPE),
+                col(SELECTION_COLUMN),
+                col(NORMALIZED_CHILD_GINI),
+            ])
+            .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default())
+            .limit(1);
+        println!("{:?}", final_lf.collect());
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_unique_combinations() -> Result<(), Box<dyn std::error::Error>> {
+        unsafe {
+            std::env::set_var("POLARS_FMT_MAX_COLS", "100");
+        }
+
+        let column_1 = "col1";
+        let column_2 = "col2";
+        let lf = df![
+            column_1 => ["A", "B", "A"],
+            column_2 => ["X", "Y", "Z"],
+        ]?
+        .lazy();
+        let combinations = get_unique_combinations(column_1, column_2, &lf);
+        let collected = combinations.collect()?;
+        assert_eq!(collected.len(), 6);
+        Ok(())
+    }
 
     #[test]
     fn test_debug() -> Result<(), Box<dyn std::error::Error>> {
@@ -80,121 +137,332 @@ mod tests {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
         }
 
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.filter(col("Embarked").neq(lit(REDUNDANT_STRING_VALUE)));
-        lf = lf.drop([TARGET_COLUMN]);
-        let feature_column = "Embarked";
-        let target_column = "Pclass";
-        lf = lf.rename([target_column], [TARGET_COLUMN], true);
-        let mut grouped_lf = group_in_and_out(&mut lf, feature_column);
-        grouped_lf = add_totals_of_in_out_group(feature_column, &mut grouped_lf);
-        let gini_lf = compute_gini_per_feature(feature_column, &mut grouped_lf);
+        let feature_column = "col1";
+        let target_column = "col2";
+        let count_column = "col3";
+        let static_column = "col4";
+        let lf = df![
+            feature_column => ["A", "B", "A"],
+            target_column => ["X", "Y", "Z"],
+            count_column => [1, 2, 3],
+            static_column => ["s", "s", "s"]
+        ]?
+        .lazy();
 
-        let normalized_gini_lf = normalize_gini_per_group(feature_column, &grouped_lf, &gini_lf);
+        let full_lf = add_zero_count(feature_column, target_column, count_column, &lf);
 
-        // Get the optimal choice:
-        let optimal_choice = normalized_gini_lf.select([col(feature_column), col("normalized_child_gini")]).sort(["normalized_child_gini"], Default::default()).limit(1);
+        println!("{:?}", full_lf.collect());
 
-        println!("{:?}", optimal_choice.collect());
         Ok(())
     }
 
-    fn normalize_gini_per_group(feature_column: &str, grouped_lf: &LazyFrame, gini_lf: &LazyFrame)  -> LazyFrame{
+    fn add_zero_count(
+        feature_column: &str,
+        target_column: &str,
+        count_column: &str,
+        lf: &LazyFrame,
+    ) -> LazyFrame {
+        // Adds a zero if a combination of feature and target doesn't exist for a certain group_by.
+
+        // Get unique combinations of feature and target:
+        let combinations = get_unique_combinations(feature_column, target_column, &lf);
+
+        // Add back the count column and fill with zeros:
+        let combinations_with_count_lf = combinations
+            .join(
+                lf.clone()
+                    .select([col(count_column), col(feature_column), col(target_column)]),
+                &[col(feature_column), col(target_column)],
+                &[col(feature_column), col(target_column)],
+                JoinArgs::new(JoinType::Left),
+            )
+            .with_columns([col(count_column).fill_null(lit(0))]);
+
+        // Add back the static columns:
+        let static_lf = lf
+            .clone()
+            .select([col("*").exclude([feature_column, count_column])])
+            .unique(None, UniqueKeepStrategy::Any);
+
+        let full_lf = combinations_with_count_lf.join(
+            static_lf,
+            &[col(target_column)],
+            &[col(target_column)],
+            JoinArgs::new(JoinType::Left),
+        );
+        full_lf
+    }
+
+
+    fn get_unique_combinations(column_1: &str, column_2: &str, lf: &LazyFrame) -> LazyFrame {
+        // Get unique values:
+        let lf1 = lf
+            .clone()
+            .select([col(column_1)])
+            .unique(None, UniqueKeepStrategy::Any);
+        let lf2 = lf
+            .clone()
+            .select([col(column_2)])
+            .unique(None, UniqueKeepStrategy::Any);
+
+        // Cross join the two unique sets
+        let combinations = lf1.cross_join(lf2, None);
+        combinations
+    }
+
+    #[test]
+    fn test_gini_for_ordinal_column() -> Result<(), Box<dyn std::error::Error>> {
+        unsafe {
+            std::env::set_var("POLARS_FMT_MAX_COLS", "100");
+            std::env::set_var("POLARS_FMT_MAX_ROWS", "100");
+        }
+
+        let mut lf = get_preprocessed_test_dataframe();
+        lf = lf.drop([TARGET_COLUMN]);
+        let feature_column = "Fare";
+        let target_column = "Pclass";
+        lf = lf.rename([target_column], [TARGET_COLUMN], true);
+
+        let sort_type = SortType::Ordinal;
+
+        let final_lf = compute_optimal_gini_impurity_for_ordinal_column(&lf, feature_column, sort_type);
+
+        println!("{:?}", final_lf.collect());
+        Ok(())
+    }
+
+    fn compute_optimal_gini_impurity_for_ordinal_column(
+        lf: &LazyFrame,
+        feature_column: &str,
+        sort_type: SortType,
+    ) -> LazyFrame {
+
+
+        let lf = pre_process_for_gini(lf, sort_type, feature_column);
+
+        // Gather lazy frames for every quantile:
+        let mut lazy_frames: Vec<LazyFrame> = Vec::new();
+        for quantile in QUANTILES.iter() {
+            lazy_frames.push(group_by_for_single_quantile(&lf, feature_column, *quantile))
+        }
+
+        // Combine lazyframes into single, larger lazyframe:
+        let mut grouped_lf = concat(
+            &lazy_frames,
+            UnionArgs {
+                rechunk: true,
+                to_supertypes: false,
+                diagonal: false,
+                from_partitioned_ds: false,
+                parallel: true,
+                maintain_order: false,
+            },
+        )
+        .unwrap();
+
+        grouped_lf = add_totals_of_in_out_group(&grouped_lf);
+        let gini_lf = compute_gini_per_feature(&grouped_lf);
+        let normalized_gini_lf = normalize_gini_per_group(&grouped_lf, &gini_lf);
+        // Keep only necessary columns and obtain best result:
+        let final_lf = normalized_gini_lf
+            .select([
+                col(FEATURE_COLUMN_NAME),
+                col(SORT_TYPE),
+                col(SELECTION_COLUMN),
+                col(NORMALIZED_CHILD_GINI),
+            ])
+            .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default())
+            .limit(1);
+        final_lf
+    }
+
+    fn group_by_for_single_quantile(
+        lf: &LazyFrame,
+        feature_column: &str,
+        quantile: f64,
+    ) -> LazyFrame {
+        // Add quantile as string:
+        let mut quantile_lf = lf.clone().with_column(
+            col(feature_column)
+                .quantile(lit(quantile), Default::default())
+                .cast(DataType::String)
+                .alias(SELECTION_COLUMN),
+        );
+        quantile_lf = quantile_lf
+            .with_column(
+                col(feature_column)
+                    .gt_eq(col(feature_column).quantile(lit(quantile), Default::default()))
+                    .alias(TEMP_COLUMN_ORDINAL),
+            )
+            .drop([feature_column]);
+        let grouped_lf = group_by_for_ordinal_inner(&quantile_lf);
+        grouped_lf
+    }
+
+    fn group_by_for_ordinal_inner(lf: &LazyFrame) -> LazyFrame {
+        let mut grouped_lf = lf
+            // Add count in:
+            .clone()
+            .group_by([col("*")])
+            .agg([col(TARGET_COLUMN)
+                .count()
+                .alias(COUNT_IN)
+                .cast(DataType::Float64)]);
+
+        grouped_lf = add_zero_count(TEMP_COLUMN_ORDINAL, TARGET_COLUMN, COUNT_IN, &grouped_lf);
+
+        // Add count out:
+        grouped_lf = grouped_lf
+            .with_columns([col(COUNT_IN)
+                .sum()
+                .over([col(TARGET_COLUMN)])
+                .alias("total_per_target")])
+            .with_columns([(col("total_per_target") - col(COUNT_IN)).alias(COUNT_OUT)])
+            .filter(col(TEMP_COLUMN_ORDINAL))
+            .drop(["total_per_target", TEMP_COLUMN_ORDINAL])
+            .sort([SELECTION_COLUMN, TARGET_COLUMN], Default::default());
+        grouped_lf
+    }
+
+    fn normalize_gini_per_group(grouped_lf: &LazyFrame, gini_lf: &LazyFrame) -> LazyFrame {
         let mut normalized_lf = grouped_lf.clone().join(
             gini_lf.clone(),
-            [col(feature_column)],
-            [col(feature_column)],
+            [col(SELECTION_COLUMN)],
+            [col(SELECTION_COLUMN)],
             JoinArgs::new(JoinType::Left),
         );
 
         // Normalize gini_in and gini_out:
         normalized_lf = normalized_lf.with_column(
-            ((col(GINI_IMPURITY_IN_GROUP) * col("total_in_group"))
-                / (col("total_in_group") + col("total_out_group")))
-                .alias(GINI_IMPURITY_IN_GROUP),
+            ((col(GINI_IMPURITY_IN_GROUP) * col(TOTAL_IN_GROUP))
+                / (col(TOTAL_IN_GROUP) + col(TOTAL_OUT_GROUP)))
+            .alias(GINI_IMPURITY_IN_GROUP),
         );
 
         normalized_lf = normalized_lf.with_column(
-            ((col("gini_out") * col("total_out_group"))
-                / (col("total_in_group") + col("total_out_group")))
-                .alias("gini_out"),
+            ((col(GINI_IMPURITY_OUT_GROUP) * col(TOTAL_OUT_GROUP))
+                / (col(TOTAL_IN_GROUP) + col(TOTAL_OUT_GROUP)))
+            .alias(GINI_IMPURITY_OUT_GROUP),
         );
 
         // Get total Gini Impurity of each possible split:
-        normalized_lf =
-            normalized_lf.with_column((col(GINI_IMPURITY_IN_GROUP) + col("gini_out")).alias("normalized_child_gini"));
+        normalized_lf = normalized_lf.with_column(
+            (col(GINI_IMPURITY_IN_GROUP) + col(GINI_IMPURITY_OUT_GROUP))
+                .alias(NORMALIZED_CHILD_GINI),
+        );
         normalized_lf
     }
 
-    fn compute_gini_per_feature(feature_column: &str, grouped_lf: &mut LazyFrame) -> LazyFrame {
-        let gini_out_column = "gini_out";
+    fn compute_gini_per_feature(grouped_lf: &LazyFrame) -> LazyFrame {
         let mut gini_lf = grouped_lf.clone().with_column(
-            ((col(COUNT_IN_COLUMN) / col("total_in_group")).pow(lit(2.0))).alias(GINI_IMPURITY_IN_GROUP),
+            ((col(COUNT_IN) / col(TOTAL_IN_GROUP)).pow(lit(2.0))).alias(GINI_IMPURITY_IN_GROUP),
         );
 
         gini_lf = gini_lf.with_column(
-            ((col(COUNT_OUT_COLUMN) / col("total_out_group")).pow(lit(2.0))).alias(gini_out_column),
+            ((col(COUNT_OUT) / col(TOTAL_OUT_GROUP)).pow(lit(2.0))).alias(GINI_IMPURITY_OUT_GROUP),
         );
 
         gini_lf = gini_lf
             .select([
-                col(feature_column),
+                col(SELECTION_COLUMN),
                 col(GINI_IMPURITY_IN_GROUP),
-                col(gini_out_column),
+                col(GINI_IMPURITY_OUT_GROUP),
             ])
-            .group_by([col(feature_column)])
-            .agg([col(GINI_IMPURITY_IN_GROUP).sum(), col(gini_out_column).sum()])
+            .group_by([col(SELECTION_COLUMN)])
+            .agg([
+                col(GINI_IMPURITY_IN_GROUP).sum(),
+                col(GINI_IMPURITY_OUT_GROUP).sum(),
+            ])
             .with_columns([
                 (lit(1.0) - col(GINI_IMPURITY_IN_GROUP)).alias(GINI_IMPURITY_IN_GROUP),
-                (lit(1.0) - col(gini_out_column)).alias(gini_out_column),
+                (lit(1.0) - col(GINI_IMPURITY_OUT_GROUP)).alias(GINI_IMPURITY_OUT_GROUP),
             ]);
         gini_lf
     }
 
-    fn add_totals_of_in_out_group(feature_column: &str, grouped_lf: &LazyFrame) -> LazyFrame {
+    fn add_totals_of_in_out_group(grouped_lf: &LazyFrame) -> LazyFrame {
         let in_group_lf = grouped_lf
             .clone()
-            .group_by([col(feature_column)])
-            .agg([col(COUNT_IN_COLUMN).sum().alias("total_in_group")]);
+            .group_by([col(SELECTION_COLUMN)])
+            .agg([col(COUNT_IN).sum().alias(TOTAL_IN_GROUP)]);
 
         let grouped_lf = grouped_lf.clone().join(
             in_group_lf,
-            [col(feature_column)],
-            [col(feature_column)],
+            [col(SELECTION_COLUMN)],
+            [col(SELECTION_COLUMN)],
             JoinArgs::new(JoinType::Left),
         );
 
-        let out_group_lf =
-            grouped_lf
-                .clone()
-                .group_by([col(feature_column)])
-                .agg([col(COUNT_OUT_COLUMN).sum().alias("total_out_group")]);
+        let out_group_lf = grouped_lf
+            .clone()
+            .group_by([col(SELECTION_COLUMN)])
+            .agg([col(COUNT_OUT).sum().alias(TOTAL_OUT_GROUP)]);
 
         let grouped_lf = grouped_lf.clone().join(
             out_group_lf,
-            [col(feature_column)],
-            [col(feature_column)],
+            [col(SELECTION_COLUMN)],
+            [col(SELECTION_COLUMN)],
             JoinArgs::new(JoinType::Left),
         );
         grouped_lf
     }
 
-    fn group_in_and_out(lf: &mut LazyFrame, feature_column: &str) -> LazyFrame {
-        let grouped_lf = lf
+    #[derive(PartialEq)]
+    enum SortType {
+        Ordinal,
+        Categorical,
+    }
+
+    impl SortType {
+        fn as_str(&self) -> &'static str {
+            match self {
+                SortType::Ordinal => "ordinal",
+                SortType::Categorical => "categorical",
+            }
+        }
+    }
+
+    fn pre_process_for_gini(
+        lf: &LazyFrame,
+        sort_type: SortType,
+        feature_column: &str,
+    ) -> LazyFrame {
+        // After this this step every feature has the same columns:
+        let mut lf = lf
             .clone()
             .select([col(feature_column), col(TARGET_COLUMN)])
-            .group_by([col(feature_column), col(TARGET_COLUMN)])
+            .with_columns([
+                lit(feature_column).alias(FEATURE_COLUMN_NAME),
+                lit(sort_type.as_str()).alias(SORT_TYPE),
+            ]);
+        if sort_type == SortType::Categorical {
+            lf = lf.rename([feature_column], [SELECTION_COLUMN], true);
+        }
+        lf
+    }
+
+    fn group_by_for_gini_impurity_categorical(lf: &LazyFrame) -> LazyFrame {
+        // Instead of grouping by feature column, should group by selection column.
+        let mut grouped_lf = lf
+            // Group in and out:
+            .clone()
+            .group_by([col("*")])
             .agg([col(TARGET_COLUMN)
                 .count()
-                .alias(COUNT_IN_COLUMN)
-                .cast(DataType::Float64)])
-            .with_columns([col(COUNT_IN_COLUMN)
+                .alias(COUNT_IN)
+                .cast(DataType::Float64)]);
+
+        grouped_lf = add_zero_count(SELECTION_COLUMN, TARGET_COLUMN, COUNT_IN, &grouped_lf);
+
+        grouped_lf = grouped_lf
+            .with_columns([col(COUNT_IN)
                 .sum()
                 .over([col(TARGET_COLUMN)])
                 .alias("total_per_target")])
-            .with_columns([(col("total_per_target") - col(COUNT_IN_COLUMN)).alias(COUNT_OUT_COLUMN)])
+            .with_columns([(col("total_per_target") - col(COUNT_IN)).alias(COUNT_OUT)])
+            .filter(col(SELECTION_COLUMN).neq(lit(REDUNDANT_STRING_VALUE)))
             .drop(["total_per_target"])
-            .sort([feature_column, TARGET_COLUMN], Default::default());
+            .sort([SELECTION_COLUMN, TARGET_COLUMN], Default::default());
         grouped_lf
     }
 
@@ -211,7 +479,7 @@ mod tests {
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
 
-        let gini  = compute_parent_gini_impurity(&lf)?;
+        let gini = compute_parent_gini_impurity(&lf)?;
         assert_eq!(gini, 0.5941737597760909);
 
         Ok(())
