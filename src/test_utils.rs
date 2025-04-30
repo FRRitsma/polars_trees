@@ -1,5 +1,5 @@
 use crate::preprocessing::{add_target_column, pre_process_dataframe};
-use crate::tree_remake::Settings;
+use crate::settings::Settings;
 use polars::io::SerReader;
 use polars::prelude::CsvReadOptions;
 use polars_core::prelude::{DataFrame, DataType};

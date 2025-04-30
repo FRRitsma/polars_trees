@@ -16,10 +16,10 @@ const GINI_IMPURITY_IN_GROUP: &str = "gini_in";
 const GINI_IMPURITY_OUT_GROUP: &str = "gini_out";
 const TOTAL_IN_GROUP: &str = "total_in_group";
 const TOTAL_OUT_GROUP: &str = "total_out_group";
-const FEATURE_COLUMN_NAME: &str = "FEATURE_COLUMN_NAME";
-const SORT_TYPE: &str = "SORT_TYPE";
+pub const FEATURE_COLUMN_NAME: &str = "FEATURE_COLUMN_NAME";
+pub const SORT_TYPE: &str = "SORT_TYPE";
 const TEMP_COLUMN_ORDINAL: &str = "temp_ordinal";
-const SELECTION_COLUMN: &str = "SELECTION_COLUMN";
+pub const SELECTION_COLUMN: &str = "SELECTION_COLUMN";
 const NORMALIZED_CHILD_GINI: &str = "NORMALIZED_CHILD_GINI";
 fn compute_parent_gini_impurity(lf: &LazyFrame) -> Result<f64, Box<dyn std::error::Error>> {
     let temp_column = "temp";
@@ -308,12 +308,20 @@ fn add_totals_of_in_out_group(grouped_lf: &LazyFrame) -> LazyFrame {
 }
 
 #[derive(PartialEq, Debug, Clone, Copy)]
-enum SortType {
+pub enum SortType {
     Ordinal,
     Categorical,
 }
 
 impl SortType {
+    pub fn from_str(string: &str)-> Self{
+        match string {
+            "ordinal" => SortType::Ordinal,
+            "categorical" => SortType::Categorical,
+            _ => {panic!("Invalid choice for SortType")}
+        }
+    }
+
     fn as_str(&self) -> &'static str {
         match self {
             SortType::Ordinal => "ordinal",

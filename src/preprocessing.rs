@@ -1,5 +1,5 @@
 use crate::constants::TARGET_COLUMN;
-use crate::tree_remake::Settings;
+use crate::settings::Settings;
 use polars::prelude::{col, lit, when, IdxSize, PlSmallStr};
 use polars_core::datatypes::DataType;
 use polars_core::prelude::{NamedFrom, SortMultipleOptions};
@@ -125,7 +125,7 @@ mod tests {
         prune_string_dataframe,
     };
     use crate::test_utils::get_raw_test_dataframe;
-    use crate::tree_remake::Settings;
+    use crate::settings::Settings;
     use polars::prelude::*;
     use polars::prelude::{col, lit, when, PlSmallStr};
     use polars_core::prelude::NamedFrom;

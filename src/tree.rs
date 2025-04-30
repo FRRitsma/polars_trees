@@ -19,14 +19,6 @@ struct Tree {
     max_depth: u8,
 }
 
-// impl fmt::Display for Tree {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         for n in 0..self.max_depth + 1 {
-//             writeln!(f, "{}", self.get_display_by_depth(n))?
-//         }
-//         Ok(())
-//     }
-// }
 
 impl Tree {
     pub fn new(minimal_sample_size: f32, max_depth: u8) -> Self {
