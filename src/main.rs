@@ -15,14 +15,14 @@ mod display_tree;
 mod empty_tree;
 mod extract_values;
 mod generic_functions;
-mod gini_impurity_working_file;
 mod numeric_type_columns;
 mod preprocessing;
+mod rework;
+mod settings;
 mod splitting_columns;
+mod splitting_dataframes;
 mod test_utils;
 mod tree;
-mod settings;
-mod splitting_dataframes;
 
 fn create_split_in_dataframe(
     df: &LazyFrame,

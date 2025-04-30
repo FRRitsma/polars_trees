@@ -124,8 +124,8 @@ mod tests {
         add_target_column, get_most_common_string_values_as_vector, get_string_type_columns,
         prune_string_dataframe,
     };
-    use crate::test_utils::get_raw_test_dataframe;
     use crate::settings::Settings;
+    use crate::test_utils::get_raw_test_dataframe;
     use polars::prelude::*;
     use polars::prelude::{col, lit, when, PlSmallStr};
     use polars_core::prelude::NamedFrom;

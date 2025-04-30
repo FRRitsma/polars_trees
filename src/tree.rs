@@ -19,7 +19,6 @@ struct Tree {
     max_depth: u8,
 }
 
-
 impl Tree {
     pub fn new(minimal_sample_size: f32, max_depth: u8) -> Self {
         Self {

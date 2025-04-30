@@ -1,26 +1,29 @@
-use std::error::Error;
 use crate::constants::TARGET_COLUMN;
 use crate::preprocessing::REDUNDANT_STRING_VALUE;
-use polars::prelude::{col, JoinArgs, JoinType, lit, UnionArgs};
+use crate::rework::sort_type::SortType;
+use crate::rework::{categorical_columns, sort_type};
+use polars::prelude::{col, lit, JoinArgs, JoinType, UnionArgs};
 use polars_core::datatypes::DataType;
 use polars_core::prelude::{NamedFrom, SortMultipleOptions, UniqueKeepStrategy};
 use polars_lazy::frame::LazyFrame;
 use polars_lazy::prelude::concat;
+use std::error::Error;
 
 // TODO: Add fail safe to ensure TARGET_COLUMN doesn't already exist in dataframe
 
 const QUANTILES: [f64; 8] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9];
-const COUNT_IN: &str = "count_in";
-const COUNT_OUT: &str = "count_out";
+pub const COUNT_IN: &str = "count_in";
+pub const COUNT_OUT: &str = "count_out";
 const GINI_IMPURITY_IN_GROUP: &str = "gini_in";
 const GINI_IMPURITY_OUT_GROUP: &str = "gini_out";
 const TOTAL_IN_GROUP: &str = "total_in_group";
 const TOTAL_OUT_GROUP: &str = "total_out_group";
 pub const FEATURE_COLUMN_NAME: &str = "FEATURE_COLUMN_NAME";
-pub const SORT_TYPE: &str = "SORT_TYPE";
+pub const SORT_TYPE_COL: &str = "SORT_TYPE";
 const TEMP_COLUMN_ORDINAL: &str = "temp_ordinal";
 pub const SELECTION_COLUMN: &str = "SELECTION_COLUMN";
 const NORMALIZED_CHILD_GINI: &str = "NORMALIZED_CHILD_GINI";
+
 fn compute_parent_gini_impurity(lf: &LazyFrame) -> Result<f64, Box<dyn std::error::Error>> {
     let temp_column = "temp";
 
@@ -71,7 +74,7 @@ fn get_optimal_gini_impurity_for_categorical_column(
     feature_column: &str,
 ) -> LazyFrame {
     let lf = pre_process_for_gini(&lf, SortType::Categorical, feature_column);
-    let mut grouped_lf = group_by_for_gini_impurity_categorical(&lf);
+    let mut grouped_lf = categorical_columns::group_by_for_gini_impurity_categorical(&lf);
     grouped_lf = add_totals_of_in_out_group(&grouped_lf);
     let gini_lf = compute_gini_per_feature(&grouped_lf);
     let normalized_gini_lf = normalize_gini_per_group(&grouped_lf, &gini_lf);
@@ -80,7 +83,7 @@ fn get_optimal_gini_impurity_for_categorical_column(
     let final_lf = normalized_gini_lf
         .select([
             col(FEATURE_COLUMN_NAME),
-            col(SORT_TYPE),
+            col(SORT_TYPE_COL),
             col(SELECTION_COLUMN),
             col(NORMALIZED_CHILD_GINI),
         ])
@@ -89,7 +92,7 @@ fn get_optimal_gini_impurity_for_categorical_column(
     final_lf
 }
 
-fn add_zero_count(
+pub(crate) fn add_zero_count(
     feature_column: &str,
     target_column: &str,
     count_column: &str,
@@ -172,7 +175,7 @@ fn get_optimal_gini_impurity_for_ordinal_column(lf: &LazyFrame, feature_column: 
     let final_lf = normalized_gini_lf
         .select([
             col(FEATURE_COLUMN_NAME),
-            col(SORT_TYPE),
+            col(SORT_TYPE_COL),
             col(SELECTION_COLUMN),
             col(NORMALIZED_CHILD_GINI),
         ])
@@ -307,29 +310,6 @@ fn add_totals_of_in_out_group(grouped_lf: &LazyFrame) -> LazyFrame {
     grouped_lf
 }
 
-#[derive(PartialEq, Debug, Clone, Copy)]
-pub enum SortType {
-    Ordinal,
-    Categorical,
-}
-
-impl SortType {
-    pub fn from_str(string: &str)-> Self{
-        match string {
-            "ordinal" => SortType::Ordinal,
-            "categorical" => SortType::Categorical,
-            _ => {panic!("Invalid choice for SortType")}
-        }
-    }
-
-    fn as_str(&self) -> &'static str {
-        match self {
-            SortType::Ordinal => "ordinal",
-            SortType::Categorical => "categorical",
-        }
-    }
-}
-
 fn pre_process_for_gini(lf: &LazyFrame, sort_type: SortType, feature_column: &str) -> LazyFrame {
     // After this this step every feature has the same columns:
     let mut lf = lf
@@ -337,37 +317,12 @@ fn pre_process_for_gini(lf: &LazyFrame, sort_type: SortType, feature_column: &st
         .select([col(feature_column), col(TARGET_COLUMN)])
         .with_columns([
             lit(feature_column).alias(FEATURE_COLUMN_NAME),
-            lit(sort_type.as_str()).alias(SORT_TYPE),
+            lit(sort_type.as_str()).alias(SORT_TYPE_COL),
         ]);
     if sort_type == SortType::Categorical {
         lf = lf.rename([feature_column], [SELECTION_COLUMN], true);
     }
     lf
-}
-
-fn group_by_for_gini_impurity_categorical(lf: &LazyFrame) -> LazyFrame {
-    // Instead of grouping by feature column, should group by selection column.
-    let mut grouped_lf = lf
-        // Group in and out:
-        .clone()
-        .group_by([col("*")])
-        .agg([col(TARGET_COLUMN)
-            .count()
-            .alias(COUNT_IN)
-            .cast(DataType::Float64)]);
-
-    grouped_lf = add_zero_count(SELECTION_COLUMN, TARGET_COLUMN, COUNT_IN, &grouped_lf);
-
-    grouped_lf = grouped_lf
-        .with_columns([col(COUNT_IN)
-            .sum()
-            .over([col(TARGET_COLUMN)])
-            .alias("total_per_target")])
-        .with_columns([(col("total_per_target") - col(COUNT_IN)).alias(COUNT_OUT)])
-        .filter(col(SELECTION_COLUMN).neq(lit(REDUNDANT_STRING_VALUE)))
-        .drop(["total_per_target"])
-        .sort([SELECTION_COLUMN, TARGET_COLUMN], Default::default());
-    grouped_lf
 }
 
 fn get_unique_combinations(column_1: &str, column_2: &str, lf: &LazyFrame) -> LazyFrame {
@@ -380,7 +335,6 @@ fn get_unique_combinations(column_1: &str, column_2: &str, lf: &LazyFrame) -> La
         .clone()
         .select([col(column_2)])
         .unique(None, UniqueKeepStrategy::Any);
-
     // Cross join the two unique sets
     let combinations = lf1.cross_join(lf2, None);
     combinations
@@ -393,7 +347,7 @@ pub fn get_best_column_to_split_on(lf: &LazyFrame) -> Result<LazyFrame, Box<dyn 
         if name == TARGET_COLUMN {
             continue;
         }
-        let sort_type = get_sort_type_for_dtype(dtype);
+        let sort_type = sort_type::get_sort_type_for_dtype(dtype);
         lazy_frames.push(get_optimal_gini_impurity_for_column(&lf, name, sort_type));
     }
     let grouped_lf = concat(
@@ -407,32 +361,10 @@ pub fn get_best_column_to_split_on(lf: &LazyFrame) -> Result<LazyFrame, Box<dyn 
             maintain_order: false,
         },
     )
-        .unwrap()
-        .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default())
-        .first();
+    .unwrap()
+    .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default())
+    .first();
     Ok(grouped_lf)
-}
-
-fn get_sort_type_for_dtype(dtype: &DataType) -> SortType {
-    if matches!(
-        dtype,
-        DataType::Int8
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::UInt8
-            | DataType::UInt16
-            | DataType::UInt32
-            | DataType::UInt64
-            | DataType::Float32
-            | DataType::Float64
-    ) {
-        return SortType::Ordinal;
-    }
-    if matches!(dtype, DataType::String) {
-        return SortType::Categorical;
-    }
-    panic!("Unsupported DataType")
 }
 
 #[cfg(test)]
@@ -445,8 +377,6 @@ mod tests {
     use polars_core::df;
     use polars_core::utils::Container;
     use polars_lazy::prelude::IntoLazy;
-
-
 
     #[test]
     fn test_iterate_over_columns() -> Result<(), Box<dyn std::error::Error>> {
@@ -463,19 +393,16 @@ mod tests {
 
         let expected_df = df![
             FEATURE_COLUMN_NAME => &["Fare"],
-            SORT_TYPE => &["ordinal"],
+            SORT_TYPE_COL => &["ordinal"],
             SELECTION_COLUMN => &["21.6792"],
             NORMALIZED_CHILD_GINI => &[0.434657_f64],
         ]?;
-
 
         assert_eq!(collected.schema(), expected_df.schema());
         assert_single_row_df_equal(&collected, &expected_df)?;
 
         Ok(())
     }
-
-
 
     #[test]
     fn test_gini_for_categorical_column() -> Result<(), Box<dyn std::error::Error>> {
@@ -496,7 +423,7 @@ mod tests {
 
         let expected_df = df![
             FEATURE_COLUMN_NAME => &["Embarked"],
-            SORT_TYPE => &["categorical"],
+            SORT_TYPE_COL => &["categorical"],
             SELECTION_COLUMN => &["C"],
             NORMALIZED_CHILD_GINI => &[0.57038_f64],
         ]?;
@@ -570,7 +497,7 @@ mod tests {
         let collected = final_lf.collect()?;
         let expected_df = df![
             FEATURE_COLUMN_NAME => &["Fare"],
-            SORT_TYPE => &["ordinal"],
+            SORT_TYPE_COL => &["ordinal"],
             SELECTION_COLUMN => &["21.6792"],
             NORMALIZED_CHILD_GINI => &[0.434657_f64],
         ]?;
