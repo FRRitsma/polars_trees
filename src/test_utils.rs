@@ -38,7 +38,7 @@ pub fn assert_single_row_df_equal(
                 let val1 = series1.f64()?.get(0).unwrap();
                 let val2 = series2.f64()?.get(0).unwrap();
 
-                assert!((val1 - val2).abs() < 0.00001f64);
+                assert!((val1 - val2).abs() < 0.00001f64, "{}", format!("left: {}, right: {}", val1, val2));
             }
             DataType::String => {
                 let val1 = series1.str()?.get(0).unwrap();

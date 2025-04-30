@@ -1,13 +1,12 @@
-use crate::rework::gini_impurity_working_file::{
-    get_best_column_to_split_on, FEATURE_COLUMN_NAME, SELECTION_COLUMN, SORT_TYPE_COL,
-};
+use crate::rework::gini_impurity_working_file::get_best_column_to_split_on;
 use crate::rework::sort_type::SortType;
 use crate::settings::Settings;
-use polars::prelude::{col, lit, Expr};
+use polars::prelude::{col, Expr, lit};
 use polars_core::frame::DataFrame;
 use polars_lazy::prelude::LazyFrame;
 use std::error::Error;
 use std::str::FromStr;
+use crate::rework::constants::{FEATURE_COLUMN_NAME, SELECTION_COLUMN, SORT_TYPE_COL};
 
 fn get_split_predicate(collected: DataFrame) -> Result<Expr, Box<dyn Error>> {
     // Extract all relevant values:
@@ -24,7 +23,7 @@ fn get_split_predicate(collected: DataFrame) -> Result<Expr, Box<dyn Error>> {
     match sort_type {
         SortType::Ordinal => {
             let threshold = f64::from_str(selection)?;
-            predicate = col(column_name).lt(lit(threshold));
+            predicate = col(column_name).gt(lit(threshold));
         }
         SortType::Categorical => {
             predicate = col(column_name).eq(lit(selection));
@@ -74,6 +73,8 @@ mod tests {
 
     use crate::test_utils::get_preprocessed_test_dataframe;
     use polars::prelude::not;
+    use polars_core::utils::Container;
+    use crate::rework::constants::{COUNT_LEFT_COL, TOTAL_LEFT_GROUP_COL, TOTAL_RIGHT_GROUP_COL};
 
     #[test]
     fn test_split_left_right() -> Result<(), Box<dyn std::error::Error>> {
@@ -83,20 +84,13 @@ mod tests {
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
 
         let collected = get_best_column_to_split_on(&lf)?.collect()?;
-        println!("{:?}", collected);
+        let size_left = collected.column(TOTAL_LEFT_GROUP_COL)?.f64()?.get(0).unwrap() as i64;
+        let size_right = collected.column(TOTAL_RIGHT_GROUP_COL)?.f64()?.get(0).unwrap() as i64;
         let predicate = get_split_predicate(collected)?;
-        let left_lf = lf.clone().filter(predicate.clone());
-        let right_lf = lf.filter(not(predicate));
-        println!("{:?}", left_lf.clone().collect()?);
-        println!("{:?}", right_lf.collect()?);
-
-        let collected = get_best_column_to_split_on(&left_lf)?.collect()?;
-        println!("{:?}", collected);
-        let predicate = get_split_predicate(collected)?;
-        let new_left = left_lf.clone().filter(predicate.clone());
-        let new_right = left_lf.filter(not(predicate));
-        println!("{:?}", new_left.collect()?);
-        println!("{:?}", new_right.collect()?);
+        let left_lf = lf.clone().filter(predicate.clone()).collect()?;
+        let right_lf = lf.filter(not(predicate)).collect()?;
+        assert!((right_lf.len() as i64 - size_right).abs() < 2);
+        assert!((left_lf.len() as i64 - size_left).abs() < 2);
 
         Ok(())
     }

@@ -1,0 +1,12 @@
+pub const QUANTILES: [f64; 8] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9];
+pub const COUNT_LEFT_COL: &str = "count_LEFT";
+pub const COUNT_RIGHT_COL: &str = "count_RIGHT";
+pub const GINI_IMPURITY_LEFT_GROUP_COL: &str = "gini_LEFT";
+pub const GINI_IMPURITY_RIGHT_GROUP_COL: &str = "gini_RIGHT";
+pub const TOTAL_LEFT_GROUP_COL: &str = "total_LEFT_group";
+pub const TOTAL_RIGHT_GROUP_COL: &str = "total_RIGHT_group";
+pub const FEATURE_COLUMN_NAME: &str = "FEATURE_COLUMN_NAME";
+pub const SORT_TYPE_COL: &str = "SORT_TYPE";
+pub const TEMP_COLUMN_ORDINAL: &str = "temp_ordinal";
+pub const SELECTION_COLUMN: &str = "SELECTION_COLUMN";
+pub(crate) const NORMALIZED_CHILD_GINI: &str = "NORMALIZED_CHILD_GINI";
