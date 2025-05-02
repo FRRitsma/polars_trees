@@ -1,6 +1,5 @@
 use crate::display_tree::BinaryTree;
 use crate::extract_values::get_most_common_label;
-use crate::generic_functions::get_optimal_leaf_value_of_dataframe;
 use crate::preprocessing::add_target_column;
 use polars::prelude::{not, Expr};
 use polars_lazy::frame::LazyFrame;
@@ -55,39 +54,7 @@ impl Tree {
         self.depth >= self.max_depth || self.end_node
     }
 
-    pub fn fit(&mut self, df: LazyFrame, target_column: &str) {
-        // Public fit defers to private fit to ensure add_target_column is performed only once
-        let df = add_target_column(df, target_column);
-        self._private_fit(df);
-    }
 
-    fn _private_fit(&mut self, df: LazyFrame) {
-        if self.is_final() {
-            let label = get_most_common_label(&df).unwrap();
-            self.label = Some(label);
-            return;
-        }
-
-        // Get split expression:
-        let leaf_value =
-            get_optimal_leaf_value_of_dataframe(&df, self.minimal_sample_size).unwrap();
-        let split_expression = leaf_value.split_expression;
-
-        // Define left and right node:
-        let mut left_node = self.private_new().unwrap();
-        let mut right_node = self.private_new().unwrap();
-
-        // Define left and right dataframe:
-        let left = df.clone().filter(split_expression.clone());
-        let right = df.filter(not(split_expression.clone()));
-
-        left_node._private_fit(left);
-        right_node._private_fit(right);
-
-        self.left_node = Some(Box::from(left_node));
-        self.right_node = Some(Box::from(right_node));
-        self.split_expression = Some(split_expression);
-    }
 
     fn display(&self) -> String {
         if self.is_final() {
@@ -138,44 +105,6 @@ mod tests {
         assert_eq!(new_tree.depth, 1);
     }
 
-    #[test]
-    pub fn test_zero_depth_tree_labels_false() {
-        let df = get_raw_test_dataframe().lazy();
-        let mut tree: Tree = Tree::new(100f32, 0);
-        tree.fit(df, TITANIC_TARGET_COLUMN);
-        assert_eq!(tree.label, Some(false));
-    }
 
-    #[test]
-    pub fn test_depth_1() {
-        let df = get_raw_test_dataframe().lazy();
-        let mut tree: Tree = Tree::new(100f32, 1);
-        tree.fit(df, TITANIC_TARGET_COLUMN); // assert_eq!(tree.label, Some(false));
-        println!("{}", tree.left_node.unwrap().label.unwrap());
-        println!("{}", tree.right_node.unwrap().label.unwrap());
-    }
 
-    #[test]
-    pub fn test_depth_2() {
-        let df = get_raw_test_dataframe().lazy();
-        let mut tree: Tree = Tree::new(100f32, 2);
-        tree.fit(df, TITANIC_TARGET_COLUMN);
-        println!("{}", tree.display_tree());
-    }
-
-    #[test]
-    pub fn test_depth_3() {
-        let df = get_raw_test_dataframe().lazy();
-        let mut tree: Tree = Tree::new(100f32, 3);
-        tree.fit(df, TITANIC_TARGET_COLUMN);
-        println!("{}", tree.display_tree());
-    }
-
-    #[test]
-    pub fn test_depth_4() {
-        let df = get_raw_test_dataframe().lazy();
-        let mut tree: Tree = Tree::new(100f32, 4);
-        tree.fit(df, TITANIC_TARGET_COLUMN);
-        println!("{}", tree.display_tree());
-    }
 }

@@ -2,7 +2,6 @@
 
 use crate::constants::{BINARIZED_COLUMN, CATEGORY_A, CATEGORY_B, COUNT_COLUMN, TARGET_COLUMN};
 use crate::extract_values::extract_count;
-use crate::splitting_columns;
 use polars::prelude::{col, lit, when, Expr};
 use polars_core::prelude::DataType;
 use polars_core::schema::SchemaRef;
@@ -104,124 +103,14 @@ impl PartialOrd for LeafValue {
     }
 }
 
-pub fn get_leaf_value_for_column(
-    df: &LazyFrame,
-    schema: &SchemaRef,
-    feature_column: &str,
-    minimum_bin_size: f32,
-) -> Result<LeafValue, Box<dyn Error>> {
-    //TODO: Implement multiple split expression
-    let mut optimal_leaf_value: Option<LeafValue> = None;
-    let split_expressions = splitting_columns::get_split_expressions(df, schema, feature_column)?;
 
-    for split_expression in split_expressions {
-        // Extract loop value:
-        let (information_value, extracted_bin_size) =
-            get_total_information_value(df, &split_expression);
-        let leaf_value = LeafValue {
-            split_expression,
-            information_value,
-            minimum_bin_size: extracted_bin_size,
-        };
-
-        // Compare to optimal value:
-        match &optimal_leaf_value {
-            Some(optimal)
-                if leaf_value.information_value > optimal.information_value
-                    && leaf_value.minimum_bin_size > minimum_bin_size =>
-            {
-                optimal_leaf_value = Some(leaf_value);
-            }
-            None => {
-                optimal_leaf_value = Some(leaf_value);
-            }
-            _ => {}
-        }
-    }
-
-    optimal_leaf_value.ok_or_else(|| "No optimal leaf value found".into())
-}
-
-pub fn get_optimal_leaf_value_of_dataframe(
-    df: &LazyFrame,
-    minimum_bin_size: f32,
-) -> Result<LeafValue, Box<dyn Error>> {
-    let schema = df.logical_plan.compute_schema()?;
-    let mut optimal_leaf_value: Option<LeafValue> = None;
-
-    for feature_column in schema.iter_names() {
-        if feature_column == TARGET_COLUMN {
-            continue;
-        }
-
-        let leaf_value = get_leaf_value_for_column(df, &schema, feature_column, minimum_bin_size)
-            .unwrap_or(LeafValue {
-                split_expression: col("Empty"),
-                information_value: -99999.0,
-                minimum_bin_size: 99999.0,
-            });
-
-        match &optimal_leaf_value {
-            Some(optimal)
-                if leaf_value.information_value > optimal.information_value
-                    && leaf_value.minimum_bin_size > minimum_bin_size =>
-            {
-                optimal_leaf_value = Some(leaf_value);
-            }
-            None => {
-                optimal_leaf_value = Some(leaf_value);
-            }
-            _ => {}
-        }
-    }
-    optimal_leaf_value.ok_or_else(|| "No optimal leaf value found in the entire dataframe".into())
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_utils::get_preprocessed_test_dataframe;
 
-    #[test]
-    fn test_get_leaf_value_of_age() -> Result<(), Box<dyn Error>> {
-        let df = get_preprocessed_test_dataframe();
-        let schema = df.logical_plan.compute_schema()?;
-        let leaf_value = get_leaf_value_for_column(&df, &schema, "Age", 32f32)?;
-        assert!(leaf_value.information_value < 1.0);
-        println!("{:?}", leaf_value.information_value);
 
-        Ok(())
-    }
 
-    #[test]
-    fn test_get_leaf_value_of_sex() -> Result<(), Box<dyn Error>> {
-        let df = get_preprocessed_test_dataframe();
-        let schema = df.logical_plan.compute_schema()?;
-        let leaf_value = get_leaf_value_for_column(&df, &schema, "Sex", 32f32)?;
-        assert!(leaf_value.information_value > 1.0);
-        println!("{:?}", leaf_value.information_value);
-        Ok(())
-    }
 
-    #[test]
-    fn test_get_optimal_leaf_value_of_dataframe() -> Result<(), Box<dyn Error>> {
-        let df = get_preprocessed_test_dataframe();
-        let schema = df.logical_plan.compute_schema()?;
-        let column_names: Vec<&str> = schema.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(column_names.len(), 12);
-
-        // println!("{:?}", column_names);
-
-        let optimal_leaf_value = get_optimal_leaf_value_of_dataframe(&df, 32f32)?;
-        let expected_split_expression: Expr = col("Sex").eq(lit("male"));
-        assert_eq!(
-            expected_split_expression,
-            optimal_leaf_value.split_expression
-        );
-        assert!(optimal_leaf_value.information_value > 1.0);
-        println!("{:?}", optimal_leaf_value.information_value);
-        println!("{:?}", optimal_leaf_value.split_expression);
-
-        Ok(())
-    }
 }

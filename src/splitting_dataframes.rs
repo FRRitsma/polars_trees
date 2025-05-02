@@ -161,20 +161,21 @@ impl ClassificationTree {
         self.split_expression = Some(predicate.clone());
 
         // Step 4: Fit children
-        // Step 4.a: Fit left
+        // Step 4.a: Split lazyframe:
+        let (left_lf, right_lf) = self.split_lazyframe_left_right(lf);
+
+        // Step 4.b: Fit left
         let left_node = self.left_node.as_deref_mut().unwrap();
         if sample_size_left < self.settings.get_min_leave_size() {
             left_node.is_final = true;
         }
-        let left_lf = lf.clone().filter(predicate.clone());
         left_node.private_fit(left_lf)?;
 
-        // Step 4.b: Fit right
+        // Step 4.c: Fit right
         let right_node = self.right_node.as_deref_mut().unwrap();
         if sample_size_right < self.settings.get_min_leave_size() {
            right_node.is_final = true;
         }
-        let right_lf = lf.filter(not(predicate));
         right_node.private_fit(right_lf)?;
 
         Ok(())
@@ -202,8 +203,7 @@ impl ClassificationTree {
         }
 
         // If not final, send to child nodes:
-        let mut left_lf = lf.clone().filter(self.split_expression.clone().unwrap());
-        let mut right_lf = lf.filter(not(self.split_expression.clone().unwrap()));
+        let (mut left_lf, mut right_lf) = self.split_lazyframe_left_right(lf);
 
         // Get predictions:
         if let (Some(left), Some(right)) = (&self.left_node, &self.right_node) {
@@ -213,6 +213,12 @@ impl ClassificationTree {
 
         // Combine:
         concat(vec![left_lf, right_lf], UnionArgs::default()).unwrap()
+    }
+
+    fn split_lazyframe_left_right(&self, lf: LazyFrame) -> (LazyFrame, LazyFrame) {
+        let mut left_lf = lf.clone().filter(self.split_expression.clone().unwrap());
+        let mut right_lf = lf.filter(not(self.split_expression.clone().unwrap()));
+        (left_lf, right_lf)
     }
 }
 

@@ -223,7 +223,6 @@ mod tests {
     use super::*;
     use crate::constants::TARGET_COLUMN;
     use crate::preprocessing::REDUNDANT_STRING_VALUE;
-    use crate::rework::graveyard::compute_parent_gini_impurity;
     use crate::test_utils::{assert_single_row_df_equal, get_preprocessed_test_dataframe};
     use polars::prelude::{col, lit};
     use polars_core::df;
@@ -333,24 +332,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_parent_gini() -> Result<(), Box<dyn std::error::Error>> {
-        unsafe {
-            std::env::set_var("POLARS_FMT_MAX_COLS", "100");
-        }
 
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.filter(col("Embarked").neq(lit(REDUNDANT_STRING_VALUE)));
-        lf = lf.drop([TARGET_COLUMN]);
-        let feature_column = "Embarked";
-        let target_column = "Pclass";
-        lf = lf.rename([target_column], [TARGET_COLUMN], true);
-
-        let gini = compute_parent_gini_impurity(&lf)?;
-        assert_eq!(gini, 0.5941737597760909);
-
-        Ok(())
-    }
 }
 
 pub(crate) fn extract_best_feature(normalized_gini_lf: LazyFrame) -> LazyFrame {
