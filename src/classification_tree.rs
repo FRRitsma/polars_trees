@@ -1,10 +1,10 @@
 use crate::constants::TARGET_COLUMN;
-use crate::rework::constants::{
+use crate::gini_impurity::constants::{
     FEATURE_COLUMN_NAME, SELECTION_COLUMN, SORT_TYPE_COL, TOTAL_LEFT_GROUP_COL,
     TOTAL_RIGHT_GROUP_COL,
 };
-use crate::rework::gini_impurity::get_best_column_to_split_on;
-use crate::rework::sort_type::SortType;
+use crate::gini_impurity::gini_impurity::get_best_column_to_split_on;
+use crate::gini_impurity::sort_type::SortType;
 use crate::settings::Settings;
 use polars::prelude::{col, lit, not, Expr, UnionArgs};
 use polars_core::frame::DataFrame;
@@ -174,7 +174,7 @@ impl ClassificationTree {
         // Step 4.c: Fit right
         let right_node = self.right_node.as_deref_mut().unwrap();
         if sample_size_right < self.settings.get_min_leave_size() {
-           right_node.is_final = true;
+            right_node.is_final = true;
         }
         right_node.private_fit(right_lf)?;
 
@@ -184,7 +184,7 @@ impl ClassificationTree {
     pub fn predict(&self, lf: &LazyFrame) -> LazyFrame {
         let mut prediction_lf = lf.clone();
         // Add columns for prediction and index:
-        let prediction_lf = prediction_lf
+        prediction_lf = prediction_lf
             .with_column(lit("").alias(PREDICTED_LABEL_COL))
             .with_row_index(INDEX_COL, None);
         // Predict label, use index col to get back original ordering and then drop:
@@ -216,8 +216,8 @@ impl ClassificationTree {
     }
 
     fn split_lazyframe_left_right(&self, lf: LazyFrame) -> (LazyFrame, LazyFrame) {
-        let mut left_lf = lf.clone().filter(self.split_expression.clone().unwrap());
-        let mut right_lf = lf.filter(not(self.split_expression.clone().unwrap()));
+        let left_lf = lf.clone().filter(self.split_expression.clone().unwrap());
+        let right_lf = lf.filter(not(self.split_expression.clone().unwrap()));
         (left_lf, right_lf)
     }
 }
@@ -377,6 +377,4 @@ mod tests {
         println!("{:?}", lf_predict.collect());
         Ok(())
     }
-
-
 }

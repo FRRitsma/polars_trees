@@ -1,14 +1,13 @@
 use crate::constants::TARGET_COLUMN;
-use crate::preprocessing::REDUNDANT_STRING_VALUE;
-use crate::rework::constants::{
+use crate::gini_impurity::constants::{
     COUNT_LEFT_COL, COUNT_RIGHT_COL, FEATURE_COLUMN_NAME, GINI_IMPURITY_LEFT_GROUP_COL,
     GINI_IMPURITY_RIGHT_GROUP_COL, NORMALIZED_CHILD_GINI, SELECTION_COLUMN, SORT_TYPE_COL,
     TOTAL_LEFT_GROUP_COL, TOTAL_RIGHT_GROUP_COL,
 };
-use crate::rework::sort_type::SortType;
-use crate::rework::{categorical_columns, ordinal_columns, sort_type};
+use crate::gini_impurity::sort_type::SortType;
+use crate::gini_impurity::{categorical_columns, ordinal_columns, sort_type};
 use polars::prelude::{col, lit, JoinArgs, JoinType, UnionArgs};
-use polars_core::prelude::{NamedFrom, SortMultipleOptions, UniqueKeepStrategy};
+use polars_core::prelude::{SortMultipleOptions, UniqueKeepStrategy};
 use polars_lazy::frame::LazyFrame;
 use polars_lazy::prelude::concat;
 use std::error::Error;
@@ -222,9 +221,7 @@ pub fn get_best_column_to_split_on(lf: &LazyFrame) -> Result<LazyFrame, Box<dyn 
 mod tests {
     use super::*;
     use crate::constants::TARGET_COLUMN;
-    use crate::preprocessing::REDUNDANT_STRING_VALUE;
     use crate::test_utils::{assert_single_row_df_equal, get_preprocessed_test_dataframe};
-    use polars::prelude::{col, lit};
     use polars_core::df;
     use polars_core::utils::Container;
     use polars_lazy::prelude::IntoLazy;
@@ -314,8 +311,6 @@ mod tests {
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
 
-        let sort_type = SortType::Ordinal;
-
         let final_lf = get_optimal_gini_impurity_for_column(&lf, feature_column, SortType::Ordinal);
         let collected = final_lf.collect()?;
         let expected_df = df![
@@ -331,8 +326,6 @@ mod tests {
         assert_single_row_df_equal(&collected, &expected_df)?;
         Ok(())
     }
-
-
 }
 
 pub(crate) fn extract_best_feature(normalized_gini_lf: LazyFrame) -> LazyFrame {

@@ -30,7 +30,7 @@ impl Settings {
         self.min_leave_size
     }
 
-    pub fn set_min_leave_size(&mut self, min_leave_size: u128){
+    pub fn set_min_leave_size(&mut self, min_leave_size: u128) {
         self.min_leave_size = min_leave_size;
     }
 

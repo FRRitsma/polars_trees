@@ -126,7 +126,6 @@ mod tests {
     };
     use crate::settings::Settings;
     use crate::test_utils::get_raw_test_dataframe;
-    use polars::prelude::*;
     use polars::prelude::{col, lit, when, PlSmallStr};
     use polars_core::prelude::NamedFrom;
     use polars_core::series::Series;

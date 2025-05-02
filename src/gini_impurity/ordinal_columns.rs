@@ -1,10 +1,10 @@
 use crate::constants::TARGET_COLUMN;
-use crate::rework::constants::{
+use crate::gini_impurity::constants::{
     COUNT_LEFT_COL, COUNT_RIGHT_COL, QUANTILES, SELECTION_COLUMN, TEMP_COLUMN_ORDINAL,
 };
-use crate::rework::gini_impurity;
-use crate::rework::gini_impurity::extract_best_feature;
-use crate::rework::sort_type::SortType;
+use crate::gini_impurity::gini_impurity;
+use crate::gini_impurity::gini_impurity::extract_best_feature;
+use crate::gini_impurity::sort_type::SortType;
 use polars::prelude::{col, lit, UnionArgs};
 use polars_core::datatypes::DataType;
 use polars_lazy::dsl::concat;

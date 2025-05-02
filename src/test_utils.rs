@@ -1,4 +1,4 @@
-use crate::preprocessing::{add_target_column, pre_process_dataframe};
+use crate::preprocessing::pre_process_dataframe;
 use crate::settings::Settings;
 use polars::io::SerReader;
 use polars::prelude::CsvReadOptions;
