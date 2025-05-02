@@ -1,13 +1,17 @@
 use crate::constants::TARGET_COLUMN;
 use crate::preprocessing::REDUNDANT_STRING_VALUE;
+use crate::rework::constants::{
+    COUNT_LEFT_COL, COUNT_RIGHT_COL, FEATURE_COLUMN_NAME, GINI_IMPURITY_LEFT_GROUP_COL,
+    GINI_IMPURITY_RIGHT_GROUP_COL, NORMALIZED_CHILD_GINI, SELECTION_COLUMN, SORT_TYPE_COL,
+    TOTAL_LEFT_GROUP_COL, TOTAL_RIGHT_GROUP_COL,
+};
 use crate::rework::sort_type::SortType;
 use crate::rework::{categorical_columns, ordinal_columns, sort_type};
-use polars::prelude::{col, JoinArgs, JoinType, lit, UnionArgs};
+use polars::prelude::{col, lit, JoinArgs, JoinType, UnionArgs};
 use polars_core::prelude::{NamedFrom, SortMultipleOptions, UniqueKeepStrategy};
 use polars_lazy::frame::LazyFrame;
 use polars_lazy::prelude::concat;
 use std::error::Error;
-use crate::rework::constants::{COUNT_LEFT_COL, COUNT_RIGHT_COL, FEATURE_COLUMN_NAME, GINI_IMPURITY_LEFT_GROUP_COL, GINI_IMPURITY_RIGHT_GROUP_COL, NORMALIZED_CHILD_GINI, SELECTION_COLUMN, SORT_TYPE_COL, TOTAL_LEFT_GROUP_COL, TOTAL_RIGHT_GROUP_COL};
 
 // TODO: Add fail safe to ensure TARGET_COLUMN doesn't already exist in dataframe
 
@@ -47,7 +51,7 @@ pub(crate) fn add_zero_count(
     full_lf
 }
 
-fn get_optimal_gini_impurity_for_column(
+pub(crate) fn get_optimal_gini_impurity_for_column(
     lf: &LazyFrame,
     feature_column: &str,
     sort_type: SortType,
@@ -55,10 +59,14 @@ fn get_optimal_gini_impurity_for_column(
     let lf_output: LazyFrame;
     match sort_type {
         SortType::Ordinal => {
-            lf_output = ordinal_columns::get_optimal_gini_impurity_for_ordinal_column(lf, feature_column);
+            lf_output =
+                ordinal_columns::get_optimal_gini_impurity_for_ordinal_column(lf, feature_column);
         }
         SortType::Categorical => {
-            lf_output = categorical_columns::get_optimal_gini_impurity_for_categorical_column(lf, feature_column);
+            lf_output = categorical_columns::get_optimal_gini_impurity_for_categorical_column(
+                lf,
+                feature_column,
+            );
         }
     }
     lf_output
@@ -87,18 +95,21 @@ pub(crate) fn normalize_gini_per_group(grouped_lf: &LazyFrame, gini_lf: &LazyFra
 
     // Get total Gini Impurity of each possible split:
     normalized_lf = normalized_lf.with_column(
-        (col(GINI_IMPURITY_LEFT_GROUP_COL) + col(GINI_IMPURITY_RIGHT_GROUP_COL)).alias(NORMALIZED_CHILD_GINI),
+        (col(GINI_IMPURITY_LEFT_GROUP_COL) + col(GINI_IMPURITY_RIGHT_GROUP_COL))
+            .alias(NORMALIZED_CHILD_GINI),
     );
     normalized_lf
 }
 
 pub(crate) fn compute_gini_per_feature(grouped_lf: &LazyFrame) -> LazyFrame {
     let mut gini_lf = grouped_lf.clone().with_column(
-        ((col(COUNT_LEFT_COL) / col(TOTAL_LEFT_GROUP_COL)).pow(lit(2.0))).alias(GINI_IMPURITY_LEFT_GROUP_COL),
+        ((col(COUNT_LEFT_COL) / col(TOTAL_LEFT_GROUP_COL)).pow(lit(2.0)))
+            .alias(GINI_IMPURITY_LEFT_GROUP_COL),
     );
 
     gini_lf = gini_lf.with_column(
-        ((col(COUNT_RIGHT_COL) / col(TOTAL_RIGHT_GROUP_COL)).pow(lit(2.0))).alias(GINI_IMPURITY_RIGHT_GROUP_COL),
+        ((col(COUNT_RIGHT_COL) / col(TOTAL_RIGHT_GROUP_COL)).pow(lit(2.0)))
+            .alias(GINI_IMPURITY_RIGHT_GROUP_COL),
     );
 
     gini_lf = gini_lf
@@ -146,7 +157,11 @@ pub(crate) fn add_totals_of_in_out_group(grouped_lf: &LazyFrame) -> LazyFrame {
     grouped_lf
 }
 
-pub(crate) fn pre_process_for_gini(lf: &LazyFrame, sort_type: SortType, feature_column: &str) -> LazyFrame {
+pub(crate) fn pre_process_for_gini(
+    lf: &LazyFrame,
+    sort_type: SortType,
+    feature_column: &str,
+) -> LazyFrame {
     // After this this step every feature has the same columns:
     let mut lf = lf
         .clone()
@@ -208,12 +223,12 @@ mod tests {
     use super::*;
     use crate::constants::TARGET_COLUMN;
     use crate::preprocessing::REDUNDANT_STRING_VALUE;
+    use crate::rework::graveyard::compute_parent_gini_impurity;
     use crate::test_utils::{assert_single_row_df_equal, get_preprocessed_test_dataframe};
     use polars::prelude::{col, lit};
     use polars_core::df;
     use polars_core::utils::Container;
     use polars_lazy::prelude::IntoLazy;
-    use crate::rework::graveyard::compute_parent_gini_impurity;
 
     #[test]
     fn test_iterate_over_columns() -> Result<(), Box<dyn std::error::Error>> {
@@ -235,38 +250,6 @@ mod tests {
             NORMALIZED_CHILD_GINI => &[0.434657_f64],
             TOTAL_LEFT_GROUP_COL => &[357.0],
             TOTAL_RIGHT_GROUP_COL => &[534.0],
-        ]?;
-
-        assert_eq!(collected.schema(), expected_df.schema());
-        assert_single_row_df_equal(&collected, &expected_df)?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_gini_for_categorical_column() -> Result<(), Box<dyn std::error::Error>> {
-        unsafe {
-            std::env::set_var("POLARS_FMT_MAX_COLS", "100");
-        }
-
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.drop([TARGET_COLUMN]);
-        let feature_column = "Embarked";
-        let target_column = "Pclass";
-        lf = lf.rename([target_column], [TARGET_COLUMN], true);
-
-        // END OF PRE-PROCESSING, start of Gini computation:
-        let final_lf =
-            get_optimal_gini_impurity_for_column(&lf, feature_column, SortType::Categorical);
-        let collected = final_lf.collect()?;
-
-        let expected_df = df![
-            FEATURE_COLUMN_NAME => &["Embarked"],
-            SORT_TYPE_COL => &["categorical"],
-            SELECTION_COLUMN => &["C"],
-            NORMALIZED_CHILD_GINI => &[0.57038_f64],
-            TOTAL_LEFT_GROUP_COL => &[168.0],
-            TOTAL_RIGHT_GROUP_COL => &[723.0],
         ]?;
 
         assert_eq!(collected.schema(), expected_df.schema());

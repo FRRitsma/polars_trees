@@ -1,6 +1,6 @@
 mod categorical_columns;
-pub mod gini_impurity_working_file;
-pub mod sort_type;
-mod graveyard;
 pub(crate) mod constants;
+pub mod gini_impurity;
+mod graveyard;
 mod ordinal_columns;
+pub mod sort_type;

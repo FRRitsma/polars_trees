@@ -1,7 +1,7 @@
-use polars_lazy::frame::LazyFrame;
+use crate::constants::TARGET_COLUMN;
 use polars::prelude::{col, lit};
 use polars_core::datatypes::DataType;
-use crate::constants::TARGET_COLUMN;
+use polars_lazy::frame::LazyFrame;
 
 pub fn compute_parent_gini_impurity(lf: &LazyFrame) -> Result<f64, Box<dyn std::error::Error>> {
     let temp_column = "temp";

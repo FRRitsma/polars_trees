@@ -1,15 +1,20 @@
-use polars_lazy::frame::LazyFrame;
+use crate::constants::TARGET_COLUMN;
+use crate::rework::constants::{
+    COUNT_LEFT_COL, COUNT_RIGHT_COL, QUANTILES, SELECTION_COLUMN, TEMP_COLUMN_ORDINAL,
+};
+use crate::rework::gini_impurity;
+use crate::rework::gini_impurity::extract_best_feature;
+use crate::rework::sort_type::SortType;
 use polars::prelude::{col, lit, UnionArgs};
 use polars_core::datatypes::DataType;
 use polars_lazy::dsl::concat;
-use crate::constants::TARGET_COLUMN;
-use crate::rework::constants::{COUNT_LEFT_COL, COUNT_RIGHT_COL, QUANTILES, SELECTION_COLUMN, TEMP_COLUMN_ORDINAL};
-use crate::rework::gini_impurity_working_file;
-use crate::rework::gini_impurity_working_file::extract_best_feature;
-use crate::rework::sort_type::SortType;
+use polars_lazy::frame::LazyFrame;
 
-pub fn get_optimal_gini_impurity_for_ordinal_column(lf: &LazyFrame, feature_column: &str) -> LazyFrame {
-    let lf = gini_impurity_working_file::pre_process_for_gini(lf, SortType::Ordinal, feature_column);
+pub fn get_optimal_gini_impurity_for_ordinal_column(
+    lf: &LazyFrame,
+    feature_column: &str,
+) -> LazyFrame {
+    let lf = gini_impurity::pre_process_for_gini(lf, SortType::Ordinal, feature_column);
 
     // Gather lazy frames for every quantile:
     let mut lazy_frames: Vec<LazyFrame> = Vec::new();
@@ -31,9 +36,9 @@ pub fn get_optimal_gini_impurity_for_ordinal_column(lf: &LazyFrame, feature_colu
     )
     .unwrap();
 
-    grouped_lf = gini_impurity_working_file::add_totals_of_in_out_group(&grouped_lf);
-    let gini_lf = gini_impurity_working_file::compute_gini_per_feature(&grouped_lf);
-    let normalized_gini_lf = gini_impurity_working_file::normalize_gini_per_group(&grouped_lf, &gini_lf);
+    grouped_lf = gini_impurity::add_totals_of_in_out_group(&grouped_lf);
+    let gini_lf = gini_impurity::compute_gini_per_feature(&grouped_lf);
+    let normalized_gini_lf = gini_impurity::normalize_gini_per_group(&grouped_lf, &gini_lf);
     // Keep only necessary columns and obtain best result:
     let final_lf = extract_best_feature(normalized_gini_lf);
     final_lf
@@ -68,7 +73,12 @@ fn group_by_for_ordinal_inner(lf: &LazyFrame) -> LazyFrame {
             .alias(COUNT_LEFT_COL)
             .cast(DataType::Float64)]);
 
-    grouped_lf = gini_impurity_working_file::add_zero_count(TEMP_COLUMN_ORDINAL, TARGET_COLUMN, COUNT_LEFT_COL, &grouped_lf);
+    grouped_lf = gini_impurity::add_zero_count(
+        TEMP_COLUMN_ORDINAL,
+        TARGET_COLUMN,
+        COUNT_LEFT_COL,
+        &grouped_lf,
+    );
 
     // Add count out:
     grouped_lf = grouped_lf
