@@ -8,7 +8,7 @@ use crate::rework::sort_type::SortType;
 use crate::settings::Settings;
 use polars::prelude::{col, lit, not, Expr, UnionArgs};
 use polars_core::frame::DataFrame;
-use polars_core::prelude::{AnyValue, SortMultipleOptions};
+use polars_core::prelude::SortMultipleOptions;
 use polars_lazy::dsl::concat;
 use polars_lazy::prelude::LazyFrame;
 use std::error::Error;
@@ -62,9 +62,11 @@ struct ClassificationTree {
     right_node: Option<Box<ClassificationTree>>,
     depth: u8,
     is_final: bool,
+
     // Polars specific:
     split_expression: Option<Expr>,
     label: Option<String>,
+
     // User defined settings:
     settings: Settings,
 }
@@ -158,25 +160,22 @@ impl ClassificationTree {
         let predicate = get_split_predicate(split_df).unwrap();
         self.split_expression = Some(predicate.clone());
 
-        // Step 4: Fit children, or set as final:
+        // Step 4: Fit children
+        // Step 4.a: Fit left
+        let left_node = self.left_node.as_deref_mut().unwrap();
         if sample_size_left < self.settings.get_min_leave_size() {
-            self.left_node.as_deref_mut().unwrap().is_final = true;
-        } else {
-            let left_lf = lf.clone().filter(predicate.clone());
-            self.left_node
-                .as_deref_mut()
-                .unwrap()
-                .private_fit(left_lf)?;
+            left_node.is_final = true;
         }
+        let left_lf = lf.clone().filter(predicate.clone());
+        left_node.private_fit(left_lf)?;
+
+        // Step 4.b: Fit right
+        let right_node = self.right_node.as_deref_mut().unwrap();
         if sample_size_right < self.settings.get_min_leave_size() {
-            self.right_node.as_deref_mut().unwrap().is_final = true;
-        } else {
-            let right_lf = lf.filter(not(predicate));
-            self.right_node
-                .as_deref_mut()
-                .unwrap()
-                .private_fit(right_lf)?;
+           right_node.is_final = true;
         }
+        let right_lf = lf.filter(not(predicate));
+        right_node.private_fit(right_lf)?;
 
         Ok(())
     }
@@ -187,23 +186,24 @@ impl ClassificationTree {
         let prediction_lf = prediction_lf
             .with_column(lit("").alias(PREDICTED_LABEL_COL))
             .with_row_index(INDEX_COL, None);
-        return self.private_predict(prediction_lf);
+        // Predict label, use index col to get back original ordering and then drop:
+        let output_df = self
+            .private_predict(prediction_lf)
+            .sort([INDEX_COL], SortMultipleOptions::default())
+            .drop([INDEX_COL]);
+        output_df
     }
 
     fn private_predict(&self, lf: LazyFrame) -> LazyFrame {
         // If self is final, add label and return:
         if self.is_final {
             let label = self.label.clone().unwrap().clone();
-            return lf
-                .clone()
-                .with_column(lit(label).alias(PREDICTED_LABEL_COL));
+            return lf.with_column(lit(label).alias(PREDICTED_LABEL_COL));
         }
 
         // If not final, send to child nodes:
         let mut left_lf = lf.clone().filter(self.split_expression.clone().unwrap());
-        let mut right_lf = lf
-            .clone()
-            .filter(not(self.split_expression.clone().unwrap()));
+        let mut right_lf = lf.filter(not(self.split_expression.clone().unwrap()));
 
         // Get predictions:
         if let (Some(left), Some(right)) = (&self.left_node, &self.right_node) {
@@ -221,10 +221,8 @@ mod tests {
     use super::*;
     use crate::constants::TARGET_COLUMN;
 
-    use crate::rework::constants::{TOTAL_LEFT_GROUP_COL, TOTAL_RIGHT_GROUP_COL};
     use crate::test_utils::get_preprocessed_test_dataframe;
     use polars::prelude::not;
-    use polars_core::prelude::SortMultipleOptions;
     use polars_core::utils::Container;
 
     #[test]
@@ -302,52 +300,77 @@ mod tests {
         Ok(())
     }
 
-    // #[test]
-    // fn test_depth_two_private_fit() -> Result<(), Box<dyn Error>> {
-    //     let mut lf = get_preprocessed_test_dataframe();
-    //     lf = lf.drop([TARGET_COLUMN]);
-    //     let target_column = "Pclass";
-    //     lf = lf.rename([target_column], [TARGET_COLUMN], true);
-    //
-    //     let mut tree = ClassificationTree::default();
-    //     tree.settings.set_max_depth(2);
-    //
-    //     tree.private_fit(&lf)?;
-    //
-    //     println!(
-    //         "{}",
-    //         tree.left_node
-    //             .clone()
-    //             .unwrap()
-    //             .left_node
-    //             .unwrap()
-    //             .label
-    //             .unwrap()
-    //     );
-    //     println!(
-    //         "{}",
-    //         tree.left_node.unwrap().right_node.unwrap().label.unwrap()
-    //     );
-    //     Ok(())
-    // }
-    //
-    // #[test]
-    // fn test_predict() {
-    //     let mut lf = get_preprocessed_test_dataframe();
-    //     lf = lf.drop([TARGET_COLUMN]);
-    //     let target_column = "Pclass";
-    //     lf = lf.rename([target_column], [TARGET_COLUMN], true);
-    //
-    //     println!("{:?}", lf.collect());
-    //
-    //     // let mut tree = ClassificationTree::default();
-    //     // tree.settings.set_max_depth(1);
-    //     //
-    //     // tree.private_fit(&lf).unwrap();
-    //     //
-    //     // let lf_predict = tree.predict(&lf);
-    //     // assert!(tree.left_node.unwrap().is_final);
-    //     // assert!(tree.right_node.unwrap().is_final);
-    //     // println!("{:?}", lf_predict.collect());
-    // }
+    #[test]
+    fn test_predict_depth_0() -> Result<(), Box<dyn Error>> {
+        // Get lazyframe:
+        let mut lf = get_preprocessed_test_dataframe();
+        lf = lf.drop([TARGET_COLUMN]);
+        let target_column = "Pclass";
+
+        // Get tree with depth zero:
+        let mut tree = ClassificationTree::default();
+        tree.settings.set_max_depth(0);
+
+        // Fit tree:
+        tree.fit(&lf, target_column)?;
+        let lf_predict = tree.predict(&lf);
+        println!("{:?}", lf_predict.collect());
+        Ok(())
+    }
+
+    #[test]
+    fn test_predict_depth_1() -> Result<(), Box<dyn Error>> {
+        // Get lazyframe:
+        let mut lf = get_preprocessed_test_dataframe();
+        lf = lf.drop([TARGET_COLUMN]);
+        let target_column = "Pclass";
+
+        // Get tree with depth zero:
+        let mut tree = ClassificationTree::default();
+        tree.settings.set_max_depth(1);
+
+        // Fit tree:
+        tree.fit(&lf, target_column)?;
+        let lf_predict = tree.predict(&lf);
+        println!("{:?}", lf_predict.collect());
+        Ok(())
+    }
+
+    #[test]
+    fn test_predict_depth_2() -> Result<(), Box<dyn Error>> {
+        // Get lazyframe:
+        let mut lf = get_preprocessed_test_dataframe();
+        lf = lf.drop([TARGET_COLUMN]);
+        let target_column = "Pclass";
+
+        // Get tree with depth zero:
+        let mut tree = ClassificationTree::default();
+        tree.settings.set_max_depth(2);
+
+        // Fit tree:
+        tree.fit(&lf, target_column)?;
+        let lf_predict = tree.predict(&lf);
+        println!("{:?}", lf_predict.collect());
+        Ok(())
+    }
+
+    #[test]
+    fn test_predict_exceed_min_leave_size() -> Result<(), Box<dyn Error>> {
+        // Get lazyframe:
+        let mut lf = get_preprocessed_test_dataframe();
+        lf = lf.drop([TARGET_COLUMN]);
+        let target_column = "Pclass";
+
+        // Get tree with depth zero:
+        let mut tree = ClassificationTree::default();
+        tree.settings.set_min_leave_size(400);
+
+        // Fit tree:
+        tree.fit(&lf, target_column)?;
+        let lf_predict = tree.predict(&lf);
+        println!("{:?}", lf_predict.collect());
+        Ok(())
+    }
+
+
 }

@@ -30,6 +30,10 @@ impl Settings {
         self.min_leave_size
     }
 
+    pub fn set_min_leave_size(&mut self, min_leave_size: u128){
+        self.min_leave_size = min_leave_size;
+    }
+
     pub fn get_max_cardinality(&self) -> u8 {
         self.max_cardinality
     }
