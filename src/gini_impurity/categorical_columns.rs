@@ -5,7 +5,7 @@ use crate::gini_impurity::gini_impurity::{
     get_optimal_gini_impurity_for_column, normalize_gini_per_group, pre_process_for_gini,
 };
 use crate::gini_impurity::sort_type::SortType;
-use crate::preprocessing::REDUNDANT_STRING_VALUE;
+use crate::old_preprocessing::REDUNDANT_STRING_VALUE;
 use crate::test_utils::assert_single_row_df_equal;
 use polars::prelude::{col, lit};
 use polars_core::datatypes::DataType;

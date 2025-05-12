@@ -1,6 +1,6 @@
 use crate::constants::TARGET_COLUMN;
 use crate::settings::Settings;
-use polars::prelude::{col, lit, when, IdxSize, PlSmallStr};
+use polars::prelude::{col, IdxSize, lit, PlSmallStr, when};
 use polars_core::datatypes::DataType;
 use polars_core::prelude::{NamedFrom, SortMultipleOptions};
 use polars_core::series::Series;
@@ -118,17 +118,21 @@ fn prune_string_dataframe(lf: LazyFrame, settings: Settings) -> LazyFrame {
     pruned_df
 }
 
+fn filter_uncommon_string_values(lf: LazyFrame, column_name: &str) -> LazyFrame {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::preprocessing::{
+    use crate::old_preprocessing::{
         add_target_column, get_most_common_string_values_as_vector, get_string_type_columns,
-        prune_string_dataframe,
     };
     use crate::settings::Settings;
     use crate::test_utils::get_raw_test_dataframe;
-    use polars::prelude::{col, lit, when, PlSmallStr};
+    use polars::prelude::{col, lit, PlSmallStr, when};
     use polars_core::prelude::NamedFrom;
     use polars_core::series::Series;
+    use crate::filler_strings::rename_filler_string_full_lazyframe;
 
     #[test]
     fn test_add_target_column() {
@@ -183,12 +187,19 @@ mod tests {
     }
 
     #[test]
-    fn test_prune_dataframe() {
+    fn test_prune_dataframe_rework() -> Result<(), Box<dyn std::error::Error>> {
         unsafe {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
+            std::env::set_var("POLARS_FMT_MAX_ROWS", "100");
         }
         let lf = get_raw_test_dataframe();
-        let pruned_lf = prune_string_dataframe(lf, Settings::default());
-        println!("{:?}", pruned_lf.collect());
+
+        let minimum_sample_count = 10;
+        let top_n_most_frequent = 5;
+        let renamed_lf =
+            rename_filler_string_full_lazyframe(lf, minimum_sample_count, top_n_most_frequent)?;
+        println!("{:?}", renamed_lf.collect());
+
+        Ok(())
     }
 }
