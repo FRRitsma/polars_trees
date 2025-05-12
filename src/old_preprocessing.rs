@@ -6,6 +6,7 @@ use polars_core::prelude::{NamedFrom, SortMultipleOptions};
 use polars_core::series::Series;
 use polars_lazy::frame::LazyFrame;
 use std::error::Error;
+use crate::filler_strings::rename_filler_string_full_lazyframe;
 
 pub fn add_target_column(lf: LazyFrame, target_column: &str) -> LazyFrame {
     lf.with_column(
@@ -99,28 +100,11 @@ pub fn prune_single_string_column(
 
 pub fn pre_process_dataframe(lf: LazyFrame, settings: Settings, target_column: &str) -> LazyFrame {
     let lf = add_target_column(lf, target_column);
-    let lf = prune_string_dataframe(lf, settings);
+    let lf = rename_filler_string_full_lazyframe(lf, settings).unwrap();
     lf
 }
 
-fn prune_string_dataframe(lf: LazyFrame, settings: Settings) -> LazyFrame {
-    /*
-    Keep in any column only the most prominent string values.
-    If there are no prominent string values, remove the entire column.
-    */
-    let string_columns = get_string_type_columns(lf.clone());
-    let mut pruned_df = lf.clone();
-    for column in string_columns.iter() {
-        let common_string_values =
-            get_most_common_string_values_as_vector(&lf, column, settings).unwrap();
-        pruned_df = prune_single_string_column(pruned_df, column, common_string_values).unwrap();
-    }
-    pruned_df
-}
 
-fn filter_uncommon_string_values(lf: LazyFrame, column_name: &str) -> LazyFrame {
-    todo!()
-}
 
 #[cfg(test)]
 mod tests {
@@ -197,8 +181,14 @@ mod tests {
         let minimum_sample_count = 10;
         let top_n_most_frequent = 5;
         let renamed_lf =
-            rename_filler_string_full_lazyframe(lf, minimum_sample_count, top_n_most_frequent)?;
-        println!("{:?}", renamed_lf.collect());
+            rename_filler_string_full_lazyframe(lf, Settings::default())?;
+
+        let collected_lf = renamed_lf.collect()?;
+        // All names should now be filler string:
+        let unique_names= collected_lf.column("Name")?.n_unique()?;
+        assert_eq!(unique_names, 1);
+        let unique_sex = collected_lf.column("Sex")?.n_unique()?;
+        assert_eq!(unique_sex, 2);
 
         Ok(())
     }

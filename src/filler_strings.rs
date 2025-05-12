@@ -4,11 +4,11 @@ use polars_core::prelude::SortMultipleOptions;
 use std::error::Error;
 use polars_core::datatypes::DataType;
 use crate::old_preprocessing::REDUNDANT_STRING_VALUE;
+use crate::settings::Settings;
 
 pub fn rename_filler_string_full_lazyframe(
     lf: LazyFrame,
-    minimum_sample_count: i32,
-    top_n_most_frequent: IdxSize,
+    settings: Settings,
 ) -> Result<LazyFrame, Box<dyn Error>> {
     let schema = lf.logical_plan.compute_schema()?;
     let mut renamed_lf = lf.clone();
@@ -19,8 +19,7 @@ pub fn rename_filler_string_full_lazyframe(
         renamed_lf = rename_filler_string_single_column(
             renamed_lf,
             name,
-            minimum_sample_count,
-            top_n_most_frequent,
+            settings,
         );
     }
     Ok(renamed_lf)
@@ -29,8 +28,7 @@ pub fn rename_filler_string_full_lazyframe(
 fn rename_filler_string_single_column(
     lf: LazyFrame,
     column_name: &str,
-    minimum_sample_count: i32,
-    top_n_most_frequent: IdxSize,
+    settings: Settings,
 ) -> LazyFrame {
     // Temporary columns:
     let top_n_column = "is_top_5";
@@ -45,9 +43,9 @@ fn rename_filler_string_single_column(
             [count_column],
             SortMultipleOptions::default().with_order_descending(true),
         )
-        .filter(col(count_column).gt_eq(minimum_sample_count))
+        .filter(col(count_column).gt_eq(settings.get_min_leave_size() as i32))
         .select([col(column_name)])
-        .limit(top_n_most_frequent)
+        .limit(settings.get_max_cardinality() as IdxSize)
         .with_column(lit(true).alias(top_n_column));
 
     // This join is "null" where the string value is not prominent:
