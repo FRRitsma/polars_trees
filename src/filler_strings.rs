@@ -1,10 +1,10 @@
-use polars_lazy::frame::LazyFrame;
-use polars::prelude::{col, IdxSize, JoinArgs, JoinType, lit, when};
-use polars_core::prelude::SortMultipleOptions;
-use std::error::Error;
-use polars_core::datatypes::DataType;
 use crate::old_preprocessing::REDUNDANT_STRING_VALUE;
 use crate::settings::Settings;
+use polars::prelude::{col, lit, when, IdxSize, JoinArgs, JoinType};
+use polars_core::datatypes::DataType;
+use polars_core::prelude::SortMultipleOptions;
+use polars_lazy::frame::LazyFrame;
+use std::error::Error;
 
 pub fn rename_filler_string_full_lazyframe(
     lf: LazyFrame,
@@ -16,11 +16,7 @@ pub fn rename_filler_string_full_lazyframe(
         if *dtype != DataType::String {
             continue;
         }
-        renamed_lf = rename_filler_string_single_column(
-            renamed_lf,
-            name,
-            settings,
-        );
+        renamed_lf = rename_filler_string_single_column(renamed_lf, name, settings)?;
     }
     Ok(renamed_lf)
 }
@@ -29,11 +25,10 @@ fn rename_filler_string_single_column(
     lf: LazyFrame,
     column_name: &str,
     settings: Settings,
-) -> LazyFrame {
+) -> Result<LazyFrame, Box<dyn Error>> {
     // Temporary columns:
     let top_n_column = "is_top_5";
     let count_column = "count";
-
     // Gather all strings that are prominent enough to keep:
     let top_strings = lf
         .clone()
@@ -48,8 +43,14 @@ fn rename_filler_string_single_column(
         .limit(settings.get_max_cardinality() as IdxSize)
         .with_column(lit(true).alias(top_n_column));
 
+    // If top_strings is empty, drop column:
+    let n_rows = top_strings.clone().collect()?.height();
+    if n_rows == 0 {
+        return Ok(lf.drop([column_name]));
+    }
+
     // This join is "null" where the string value is not prominent:
-    let join_lf = lf.clone().join(
+    let join_lf = lf.join(
         top_strings,
         [col(column_name)],
         [col(column_name)],
@@ -65,5 +66,6 @@ fn rename_filler_string_single_column(
                 .alias(column_name),
         )
         .drop([top_n_column]);
-    renamed_lf
+
+    Ok(renamed_lf)
 }

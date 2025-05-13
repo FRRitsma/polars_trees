@@ -212,8 +212,7 @@ pub fn get_best_column_to_split_on(lf: &LazyFrame) -> Result<LazyFrame, Box<dyn 
         },
     )
     .unwrap()
-    .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default())
-    .first();
+    .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default());
     Ok(grouped_lf)
 }
 
@@ -227,6 +226,13 @@ mod tests {
     use polars_lazy::prelude::IntoLazy;
 
     #[test]
+    fn test_debug() -> Result<(), Box<dyn Error>> {
+        let mut lf = get_preprocessed_test_dataframe();
+
+        Ok(())
+    }
+
+    #[test]
     fn test_iterate_over_columns() -> Result<(), Box<dyn std::error::Error>> {
         unsafe {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
@@ -237,7 +243,7 @@ mod tests {
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
 
-        let collected = get_best_column_to_split_on(&lf)?.collect()?;
+        let collected = get_best_column_to_split_on(&lf)?.first().collect()?;
 
         let expected_df = df![
             FEATURE_COLUMN_NAME => &["Fare"],

@@ -5,6 +5,7 @@ use crate::gini_impurity::constants::{
 };
 use crate::gini_impurity::gini_impurity::get_best_column_to_split_on;
 use crate::gini_impurity::sort_type::SortType;
+use crate::old_preprocessing::pre_process_dataframe;
 use crate::settings::Settings;
 use polars::prelude::{col, lit, not, Expr, UnionArgs};
 use polars_core::frame::DataFrame;
@@ -137,7 +138,7 @@ impl ClassificationTree {
 
     pub fn fit(&mut self, lf: &LazyFrame, target_column: &str) -> Result<(), Box<dyn Error>> {
         // Pre-processing step: Renaming provided target column to hardcoded target column.
-        let lf = lf.clone().rename([target_column], [TARGET_COLUMN], true);
+        let lf = pre_process_dataframe(lf.clone(), Settings::default(), target_column);
         self.private_fit(lf)?;
         Ok(())
     }
@@ -155,7 +156,7 @@ impl ClassificationTree {
         self.spawn_child(NodePosition::Right);
 
         // Step 3: Get the split criterion:
-        let split_df = get_best_column_to_split_on(&lf).unwrap().collect().unwrap();
+        let split_df = get_best_column_to_split_on(&lf)?.first().collect()?;
         let (sample_size_left, sample_size_right) = get_size_left_size_right(&split_df)?;
         let predicate = get_split_predicate(split_df).unwrap();
         self.split_expression = Some(predicate.clone());
@@ -227,7 +228,7 @@ mod tests {
     use super::*;
     use crate::constants::TARGET_COLUMN;
 
-    use crate::test_utils::get_preprocessed_test_dataframe;
+    use crate::test_utils::{get_preprocessed_test_dataframe, get_raw_test_dataframe};
     use polars::prelude::not;
     use polars_core::utils::Container;
 
@@ -345,8 +346,7 @@ mod tests {
     #[test]
     fn test_predict_depth_2() -> Result<(), Box<dyn Error>> {
         // Get lazyframe:
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.drop([TARGET_COLUMN]);
+        let lf = get_raw_test_dataframe();
         let target_column = "Pclass";
 
         // Get tree with depth zero:
