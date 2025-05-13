@@ -144,6 +144,8 @@ impl ClassificationTree {
     }
 
     fn private_fit(&mut self, lf: LazyFrame) -> Result<(), Box<dyn Error>> {
+        let lf = lf.cache();
+
         // Step 1: Am I a final node?
         if self.depth == self.settings.get_max_depth() || self.is_final {
             self.is_final = true;
@@ -156,7 +158,7 @@ impl ClassificationTree {
         self.spawn_child(NodePosition::Right);
 
         // Step 3: Get the split criterion:
-        let split_df = get_best_column_to_split_on(&lf)?.first().collect()?;
+        let split_df = get_best_column_to_split_on(lf.clone())?.first().collect()?;
         let (sample_size_left, sample_size_right) = get_size_left_size_right(&split_df)?;
         let predicate = get_split_predicate(split_df).unwrap();
         self.split_expression = Some(predicate.clone());
@@ -238,7 +240,7 @@ mod tests {
         lf = lf.drop([TARGET_COLUMN]);
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
-        let collected = get_best_column_to_split_on(&lf)?.collect()?;
+        let collected = get_best_column_to_split_on(lf.clone())?.collect()?;
         let (size_left, size_right) = get_size_left_size_right(&collected)?;
         let predicate = get_split_predicate(collected)?;
         let left_lf = lf.clone().filter(predicate.clone()).collect()?;

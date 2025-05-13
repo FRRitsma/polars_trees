@@ -190,7 +190,8 @@ fn get_unique_combinations(column_1: &str, column_2: &str, lf: &LazyFrame) -> La
     combinations
 }
 
-pub fn get_best_column_to_split_on(lf: &LazyFrame) -> Result<LazyFrame, Box<dyn Error>> {
+pub fn get_best_column_to_split_on(lf: LazyFrame) -> Result<LazyFrame, Box<dyn Error>> {
+
     let schema = lf.logical_plan.compute_schema()?;
     let mut lazy_frames: Vec<LazyFrame> = Vec::new();
     for (name, dtype) in schema.iter() {
@@ -243,7 +244,7 @@ mod tests {
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
 
-        let collected = get_best_column_to_split_on(&lf)?.first().collect()?;
+        let collected = get_best_column_to_split_on(lf.clone())?.first().collect()?;
 
         let expected_df = df![
             FEATURE_COLUMN_NAME => &["Fare"],
@@ -261,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_unique_combinations() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_get_unique_combinations() -> Result<(), Box<dyn Error>> {
         unsafe {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
         }
