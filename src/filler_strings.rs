@@ -29,6 +29,7 @@ fn rename_filler_string_single_column(
     // Temporary columns:
     let top_n_column = "is_top_5";
     let count_column = "count";
+
     // Gather all strings that are prominent enough to keep:
     let top_strings = lf
         .clone()

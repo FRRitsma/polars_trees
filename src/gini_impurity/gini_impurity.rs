@@ -4,7 +4,7 @@ use crate::gini_impurity::constants::{
     GINI_IMPURITY_RIGHT_GROUP_COL, NORMALIZED_CHILD_GINI, SELECTION_COLUMN, SORT_TYPE_COL,
     TOTAL_LEFT_GROUP_COL, TOTAL_RIGHT_GROUP_COL,
 };
-use crate::gini_impurity::sort_type::SortType;
+use crate::gini_impurity::sort_type::{get_sort_type_for_dtype, SortType};
 use crate::gini_impurity::{categorical_columns, ordinal_columns, sort_type};
 use polars::prelude::{col, lit, JoinArgs, JoinType, UnionArgs};
 use polars_core::prelude::{SortMultipleOptions, UniqueKeepStrategy};
@@ -190,15 +190,14 @@ fn get_unique_combinations(column_1: &str, column_2: &str, lf: &LazyFrame) -> La
     combinations
 }
 
-pub fn get_best_column_to_split_on(lf: LazyFrame) -> Result<LazyFrame, Box<dyn Error>> {
-
+pub fn get_gini_impurity_for_all_columns(lf: LazyFrame) -> Result<LazyFrame, Box<dyn Error>> {
     let schema = lf.logical_plan.compute_schema()?;
     let mut lazy_frames: Vec<LazyFrame> = Vec::new();
     for (name, dtype) in schema.iter() {
         if name == TARGET_COLUMN {
             continue;
         }
-        let sort_type = sort_type::get_sort_type_for_dtype(dtype);
+        let sort_type = get_sort_type_for_dtype(dtype);
         lazy_frames.push(get_optimal_gini_impurity_for_column(&lf, name, sort_type));
     }
     let grouped_lf = concat(
@@ -211,11 +210,15 @@ pub fn get_best_column_to_split_on(lf: LazyFrame) -> Result<LazyFrame, Box<dyn E
             parallel: true,
             maintain_order: false,
         },
-    )
-    .unwrap()
+    )?
     .sort([NORMALIZED_CHILD_GINI], SortMultipleOptions::default());
     Ok(grouped_lf)
 }
+
+// pub fn remove_unused_columns(lf: LazyFrame, gini_lf: LazyFrame) -> LazyFrame{
+//
+// }
+
 
 #[cfg(test)]
 mod tests {
@@ -223,18 +226,29 @@ mod tests {
     use crate::constants::TARGET_COLUMN;
     use crate::test_utils::{assert_single_row_df_equal, get_preprocessed_test_dataframe};
     use polars_core::df;
+    use polars_core::utils::arrow::io::iterator::StreamingIterator;
     use polars_core::utils::Container;
     use polars_lazy::prelude::IntoLazy;
 
     #[test]
     fn test_debug() -> Result<(), Box<dyn Error>> {
         let mut lf = get_preprocessed_test_dataframe();
+        let collected = get_gini_impurity_for_all_columns(lf.clone())?.collect()?;
+        let keep_columns = collected.column(FEATURE_COLUMN_NAME)?.str()?;
 
+        let mut keep_columns_vec = keep_columns
+                .into_iter()
+                .map(|opt_s| col(opt_s.unwrap_or(""))) // Provide default for None
+                .collect::<Vec<_>>();
+        keep_columns_vec.push(col(TARGET_COLUMN));
+        lf = lf.select(keep_columns_vec);
+
+        println!("{:?}", lf.collect());
         Ok(())
     }
 
     #[test]
-    fn test_iterate_over_columns() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_iterate_over_columns() -> Result<(), Box<dyn Error>> {
         unsafe {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
         }
@@ -244,7 +258,7 @@ mod tests {
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
 
-        let collected = get_best_column_to_split_on(lf.clone())?.first().collect()?;
+        let collected = get_gini_impurity_for_all_columns(lf.clone())?.first().collect()?;
 
         let expected_df = df![
             FEATURE_COLUMN_NAME => &["Fare"],
@@ -281,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_zero_count() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_add_zero_count() -> Result<(), Box<dyn Error>> {
         unsafe {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
         }
@@ -306,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn test_gini_for_ordinal_column() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_gini_for_ordinal_column() -> Result<(), Box<dyn Error>> {
         unsafe {
             std::env::set_var("POLARS_FMT_MAX_COLS", "100");
             std::env::set_var("POLARS_FMT_MAX_ROWS", "100");

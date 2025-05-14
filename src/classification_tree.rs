@@ -3,7 +3,7 @@ use crate::gini_impurity::constants::{
     FEATURE_COLUMN_NAME, SELECTION_COLUMN, SORT_TYPE_COL, TOTAL_LEFT_GROUP_COL,
     TOTAL_RIGHT_GROUP_COL,
 };
-use crate::gini_impurity::gini_impurity::get_best_column_to_split_on;
+use crate::gini_impurity::gini_impurity::get_gini_impurity_for_all_columns;
 use crate::gini_impurity::sort_type::SortType;
 use crate::old_preprocessing::pre_process_dataframe;
 use crate::settings::Settings;
@@ -18,7 +18,7 @@ use std::str::FromStr;
 const PREDICTED_LABEL_COL: &str = "PREDICTED_LABEL";
 const INDEX_COL: &str = "INDEX";
 
-fn get_size_left_size_right(collected: &DataFrame) -> Result<(u128, u128), Box<dyn Error>> {
+fn get_size_of_left_and_right(collected: &DataFrame) -> Result<(u128, u128), Box<dyn Error>> {
     let size_left = collected
         .column(TOTAL_LEFT_GROUP_COL)?
         .f64()?
@@ -136,9 +136,9 @@ impl ClassificationTree {
         }
     }
 
-    pub fn fit(&mut self, lf: &LazyFrame, target_column: &str) -> Result<(), Box<dyn Error>> {
+    pub fn fit(&mut self, lf: LazyFrame, target_column: &str) -> Result<(), Box<dyn Error>> {
         // Pre-processing step: Renaming provided target column to hardcoded target column.
-        let lf = pre_process_dataframe(lf.clone(), Settings::default(), target_column);
+        let lf = pre_process_dataframe(lf, Settings::default(), target_column);
         self.private_fit(lf)?;
         Ok(())
     }
@@ -158,10 +158,21 @@ impl ClassificationTree {
         self.spawn_child(NodePosition::Right);
 
         // Step 3: Get the split criterion:
-        let split_df = get_best_column_to_split_on(lf.clone())?.first().collect()?;
-        let (sample_size_left, sample_size_right) = get_size_left_size_right(&split_df)?;
-        let predicate = get_split_predicate(split_df).unwrap();
+        let gini_lf = get_gini_impurity_for_all_columns(lf.clone())?.cache();
+        let best_column = gini_lf.clone().first().collect()?;
+        let (sample_size_left, sample_size_right) = get_size_of_left_and_right(&best_column)?;
+        let predicate = get_split_predicate(best_column)?;
         self.split_expression = Some(predicate.clone());
+
+        // // Clean columns:
+        // let gini_df = gini_lf.collect()?;
+        // let mut keep_columns = gini_df.column(FEATURE_COLUMN_NAME)?.str()?;
+        // let mut keep_columns_vec = keep_columns
+        //         .into_iter()
+        //         .map(|opt_s| col(opt_s.unwrap_or(""))) // Provide default for None
+        //         .collect::<Vec<_>>();
+        // keep_columns_vec.push(col(TARGET_COLUMN));
+        // let lf= lf.select(keep_columns_vec);
 
         // Step 4: Fit children
         // Step 4.a: Split lazyframe:
@@ -227,6 +238,7 @@ impl ClassificationTree {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
     use super::*;
     use crate::constants::TARGET_COLUMN;
 
@@ -240,8 +252,8 @@ mod tests {
         lf = lf.drop([TARGET_COLUMN]);
         let target_column = "Pclass";
         lf = lf.rename([target_column], [TARGET_COLUMN], true);
-        let collected = get_best_column_to_split_on(lf.clone())?.collect()?;
-        let (size_left, size_right) = get_size_left_size_right(&collected)?;
+        let collected = get_gini_impurity_for_all_columns(lf.clone())?.collect()?;
+        let (size_left, size_right) = get_size_of_left_and_right(&collected)?;
         let predicate = get_split_predicate(collected)?;
         let left_lf = lf.clone().filter(predicate.clone()).collect()?;
         let right_lf = lf.filter(not(predicate)).collect()?;
@@ -274,7 +286,7 @@ mod tests {
         tree.settings.set_max_depth(0);
 
         // Fit tree:
-        tree.fit(&lf, target_column)?;
+        tree.fit(lf.clone(), target_column)?;
 
         // Testing expected outputs:
         assert!(tree.is_final);
@@ -285,16 +297,15 @@ mod tests {
     #[test]
     fn test_fit_tree_with_depth_1() -> Result<(), Box<dyn Error>> {
         // Get lazyframe:
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.drop([TARGET_COLUMN]);
+        let mut lf = get_raw_test_dataframe();
         let target_column = "Pclass";
 
-        // Get tree with depth zero:
+        // Get tree with depth one:
         let mut tree = ClassificationTree::default();
         tree.settings.set_max_depth(1);
 
         // Fit tree:
-        tree.fit(&lf, target_column)?;
+        tree.fit(lf.clone(), target_column)?;
 
         // Testing expected outputs:
         assert!(!tree.is_final);
@@ -312,8 +323,7 @@ mod tests {
     #[test]
     fn test_predict_depth_0() -> Result<(), Box<dyn Error>> {
         // Get lazyframe:
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.drop([TARGET_COLUMN]);
+        let mut lf = get_raw_test_dataframe();
         let target_column = "Pclass";
 
         // Get tree with depth zero:
@@ -321,7 +331,7 @@ mod tests {
         tree.settings.set_max_depth(0);
 
         // Fit tree:
-        tree.fit(&lf, target_column)?;
+        tree.fit(lf.clone(), target_column)?;
         let lf_predict = tree.predict(&lf);
         println!("{:?}", lf_predict.collect());
         Ok(())
@@ -339,7 +349,7 @@ mod tests {
         tree.settings.set_max_depth(1);
 
         // Fit tree:
-        tree.fit(&lf, target_column)?;
+        tree.fit(lf.clone(), target_column)?;
         let lf_predict = tree.predict(&lf);
         println!("{:?}", lf_predict.collect());
         Ok(())
@@ -356,7 +366,10 @@ mod tests {
         tree.settings.set_max_depth(2);
 
         // Fit tree:
-        tree.fit(&lf, target_column)?;
+        let start = Instant::now();
+        tree.fit(lf.clone(), target_column)?;
+        println!("Fitting took: {:?}", start.elapsed());
+
         let lf_predict = tree.predict(&lf);
         println!("{:?}", lf_predict.collect());
         Ok(())
@@ -365,8 +378,7 @@ mod tests {
     #[test]
     fn test_predict_exceed_min_leave_size() -> Result<(), Box<dyn Error>> {
         // Get lazyframe:
-        let mut lf = get_preprocessed_test_dataframe();
-        lf = lf.drop([TARGET_COLUMN]);
+        let mut lf = get_raw_test_dataframe();
         let target_column = "Pclass";
 
         // Get tree with depth zero:
@@ -374,7 +386,7 @@ mod tests {
         tree.settings.set_min_leave_size(400);
 
         // Fit tree:
-        tree.fit(&lf, target_column)?;
+        tree.fit(lf.clone(), target_column)?;
         let lf_predict = tree.predict(&lf);
         println!("{:?}", lf_predict.collect());
         Ok(())
