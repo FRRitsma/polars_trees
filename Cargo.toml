@@ -6,8 +6,13 @@ edition = "2021"
 [dependencies]
 env_logger = "0.11.7"
 log = "0.4.27"
+maturin = "1.8.6"
 polars = { version = "0.46.0", features = ["csv", "lazy", "mode", "is_in", "cross_join"] }
 polars-core = "0.46.0"
 polars-lazy = "0.46.0"
+pyo3 = "0.24.2"
 thiserror = "2.0.12"
 
+[lib]
+name = "trees"
+crate-type = ["cdylib"]

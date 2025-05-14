@@ -9,6 +9,7 @@ mod gini_impurity;
 mod old_preprocessing;
 mod settings;
 mod test_utils;
+mod lib;
 
 fn main() -> Result<(), Box<dyn Error>> {
     Ok(())

@@ -7,7 +7,7 @@ use crate::gini_impurity::gini_impurity::get_gini_impurity_for_all_columns;
 use crate::gini_impurity::sort_type::SortType;
 use crate::old_preprocessing::pre_process_dataframe;
 use crate::settings::Settings;
-use polars::prelude::{col, lit, not, Expr, UnionArgs};
+use polars::prelude::{col, Expr, lit, not, UnionArgs};
 use polars_core::frame::DataFrame;
 use polars_core::prelude::SortMultipleOptions;
 use polars_lazy::dsl::concat;
@@ -235,6 +235,7 @@ impl ClassificationTree {
         (left_lf, right_lf)
     }
 }
+
 
 #[cfg(test)]
 mod tests {
