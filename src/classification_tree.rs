@@ -42,6 +42,10 @@ fn get_split_predicate(collected: DataFrame) -> Result<Expr, Box<dyn Error>> {
     let sort_type = SortType::from_str(collected.column(SORT_TYPE_COL)?.str()?.get(0).unwrap());
     let selection = collected.column(SELECTION_COLUMN)?.str()?.get(0).unwrap();
 
+    if selection == ""{
+        panic!("{} should not return an empty string", SELECTION_COLUMN);
+    }
+
     // Create predicate:
     let predicate: Expr;
     match sort_type {
